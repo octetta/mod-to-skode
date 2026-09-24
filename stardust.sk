@@ -8263,5 +8263,5 @@ y63
 
 # === MACROS ===
 # The file does not start automatically. Type 'play' to begin, and 'stop' to halt.
-[play]: v4 w0 m1 l1 B1 v5 w0 m1 l1 B1 v6 w0 m1 l1 B1 v7 w0 m1 l1 B1 y127 z1 y0 z1 y16 z1 y32 z1 y48 z1;
+[play]: v0 p-0.6 v1 p0.6 v2 p0.6 v3 p-0.6 v4 w0 m1 l1 B1 v5 w0 m1 l1 B1 v6 w0 m1 l1 B1 v7 w0 m1 l1 B1 y127 z1 y0 z1 y16 z1 y32 z1 y48 z1;
 [stop]: Z0;

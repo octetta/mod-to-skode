@@ -266,9 +266,11 @@ def convert_mod(filename, compress_blank=False):
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
         
         play_cmds = ["y127 z1"] + [f"y{c * num_skode_patterns} z1" for c in range(4)]
-        # Add LFO setup for voices 4,5,6,7 (sine waves, silent, looping)
+        # Add LFO setup for voices 4,5,6,7
         lfo_cmds = [f"v{c+4} w0 m1 l1 B1" for c in range(4)]
-        out.write(f"[play]: {' '.join(lfo_cmds + play_cmds)};\n")
+        # Amiga hardware panning: Ch 0 & 3 Left, Ch 1 & 2 Right
+        pan_cmds = [f"v{c} p{-0.6 if c in [0, 3] else 0.6}" for c in range(4)]
+        out.write(f"[play]: {' '.join(pan_cmds + lfo_cmds + play_cmds)};\n")
         
         stop_cmds = ["Z0"]
         out.write(f"[stop]: {' '.join(stop_cmds)};\n")
