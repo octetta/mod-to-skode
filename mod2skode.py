@@ -1,12 +1,18 @@
+
+import math
+def vol_to_db(v):
+    if v <= 0: return -60.0
+    return 20.0 * math.log10(v / 64.0) + 10.0
+
 import sys
 import struct
 import os
 import math
 
 PERIODS = {
-    856: 36, 808: 37, 762: 38, 720: 39, 678: 40, 640: 41, 604: 42, 570: 43, 538: 44, 508: 45, 480: 46, 453: 47,
-    428: 48, 404: 49, 381: 50, 360: 51, 339: 52, 320: 53, 302: 54, 285: 55, 269: 56, 254: 57, 240: 58, 226: 59,
-    214: 60, 202: 61, 190: 62, 180: 63, 170: 64, 160: 65, 151: 66, 143: 67, 135: 68, 127: 69, 120: 70, 113: 71
+    856: 45,    808: 46,    762: 47,    720: 48,    678: 49,    640: 50,    604: 51,    570: 52,    538: 53,    508: 54,    480: 55,    453: 56,
+    428: 57,    404: 58,    381: 59,    360: 60,    339: 61,    320: 62,    302: 63,    285: 64,    269: 65,    254: 66,    240: 67,    226: 68,
+    214: 69,    202: 70,    190: 71,    180: 72,    170: 73,    160: 74,    151: 75,    143: 76,    135: 77,    127: 78,    120: 79,    113: 80,
 }
 
 def closest_period(p):
@@ -169,20 +175,21 @@ def convert_mod(filename, compress_blank=False):
                                     current_loop[c] = wants_loop
                                 break
                     
-                    do_l_trigger = False
+                    vol_changed = False
                     if note is not None:
                         current_note[c] = note
                         cmds.append(f"n{note}")
-                        do_l_trigger = True
-                    elif inst > 0:
-                        do_l_trigger = True
+                        cmds.append("l1")
+                        
+                    if inst > 0 and note is None:
+                        vol_changed = True
 
                     if effect == 0xC:
                         current_vol[c] = max(0, min(64, param))
-                        do_l_trigger = True
+                        vol_changed = True
                         
-                    if do_l_trigger:
-                        cmds.append(f"l{current_vol[c]/64.0:.2f}")
+                    if vol_changed or (note is not None):
+                        cmds.append(f"a{vol_to_db(current_vol[c]):.2f}")
                         
                     elif effect == 0xA and param > 0:
                         up = param >> 4
@@ -190,7 +197,7 @@ def convert_mod(filename, compress_blank=False):
                         delta = up if up > 0 else -down
                         for t in range(1, current_speed):
                             current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                            cmds.append(f"+-{t} l{current_vol[c]/64.0:.2f}")
+                            cmds.append(f"+-{t} a{vol_to_db(current_vol[c]):.2f}")
                             
 
                     # 4 - Vibrato
@@ -215,7 +222,7 @@ def convert_mod(filename, compress_blank=False):
                             delta = up if up > 0 else -down
                             for t in range(1, current_speed):
                                 current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                                cmds.append(f"+-{t} l{current_vol[c]/64.0:.2f}")
+                                cmds.append(f"+-{t} a{vol_to_db(current_vol[c]):.2f}")
                                 
                     if effect != 0x4 and effect != 0x6 and vib_active[c]:
                         # Turn off vibrato
