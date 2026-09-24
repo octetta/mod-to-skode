@@ -39,6 +39,7 @@ def convert_mod(filename, compress_blank=False):
         offset += 30
         
     song_len = data[offset]
+    restart_pos = data[offset+1]
     offset += 2
     sequence = data[offset:offset+128][:song_len]
     offset += 128
@@ -110,15 +111,6 @@ def convert_mod(filename, compress_blank=False):
         last_pats = [str(c * num_skode_patterns + num_skode_patterns - 1) for c in range(4)]
         first_pats = [str(c * num_skode_patterns) for c in range(4)]
         loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in first_pats] + ["y127 z1"]
-        out.write(f"127 [{' '.join(loop_cmds)}] e>127\n")
-        out.write("/cex 127,4,127\n")
-
-        out.write("# === END OF SONG LOOP ===\n")
-        out.write("# When the final sequence finishes, it emits 'ce 127'.\n")
-        out.write("# This string stops the final patterns, and instantly restarts (z1) the first patterns AND the master pattern.\n")
-        last_pats = [str(c * num_skode_patterns + num_skode_patterns - 1) for c in range(4)]
-        first_pats = [str(c * num_skode_patterns) for c in range(4)]
-        loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in first_pats] + ["y127 z1"]
         out.write(f"[{' '.join(loop_cmds)}] e>127\n")
         out.write("/cex 127,4,127\n")
         out.write("\n/cer 1\n\n")
@@ -164,8 +156,12 @@ def convert_mod(filename, compress_blank=False):
                     if row_speed_cmd is not None:
                         cmds.append(f"z%{row_speed_cmd}")
 
+                    old_vol = current_vol[c]
+
                     if inst > 0:
-                        cmds.append(f"w{100+inst}")
+                        if current_wave[c] != inst:
+                            cmds.append(f"w{100+inst}")
+                            current_wave[c] = inst
                         for ins in instruments:
                             if ins['id'] == inst:
                                 current_vol[c] = ins['vol']
@@ -175,21 +171,15 @@ def convert_mod(filename, compress_blank=False):
                                     current_loop[c] = wants_loop
                                 break
                     
-                    vol_changed = False
                     if note is not None:
                         current_note[c] = note
-                        cmds.append(f"n{note}")
-                        cmds.append("l1")
-                        
-                    if inst > 0 and note is None:
-                        vol_changed = True
+                        cmds.append(f"n{note} l1")
 
                     if effect == 0xC:
                         current_vol[c] = max(0, min(64, param))
-                        vol_changed = True
                         
-                    if vol_changed or (note is not None):
-                        cmds.append(f"a{vol_to_db(current_vol[c]):.2f}")
+                    if current_vol[c] != old_vol or (note is not None):
+                        cmds.append(f"s0 a{vol_to_db(current_vol[c]):.2f}")
                         
                     elif effect == 0xA and param > 0:
                         up = param >> 4
@@ -245,14 +235,8 @@ def convert_mod(filename, compress_blank=False):
                     is_last_seq = (seq_idx == len(sequence) - 1)
                     if is_last_seq and r == 63 and c == 0:
                         cmds.append("ce 127 # LOOP ENTIRE SONG")
-
-                    is_last_seq = (seq_idx == len(sequence) - 1)
-                    if is_last_seq and r == 63 and c == 0:
-                        cmds.append("ce 127 # LOOP ENTIRE SONG")
                     elif abs_r == 127 and c == 0 and sk_pattern_idx < num_skode_patterns - 1:
-
-
-                        cmds.append(f"ce {sk_pattern_idx} # TRIPS THE EVENT DISPATCHER TO CHAIN THE NEXT PATTERN CHUNK")
+                        cmds.append(f"ce {sk_pattern_idx}")
                         
                     if cmds:
                         out.write(f"[{' '.join(cmds)}] x{abs_r}\n")
@@ -265,17 +249,15 @@ def convert_mod(filename, compress_blank=False):
         out.write("# === MACROS ===\n")
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
         
-        play_cmds = ["y127 z1"] + [f"y{c * num_skode_patterns} z1" for c in range(4)]
-        # Add LFO setup for voices 4,5,6,7
+        play_cmds = [f"y{c * num_skode_patterns} z1" for c in range(4)] + ["y127 z1"]
         lfo_cmds = [f"v{c+4} w0 m1 l1 B1" for c in range(4)]
-        # Amiga hardware panning: Ch 0 & 3 Left, Ch 1 & 2 Right
         pan_cmds = [f"v{c} p{-0.6 if c in [0, 3] else 0.6}" for c in range(4)]
         out.write(f"[play]: {' '.join(pan_cmds + lfo_cmds + play_cmds)};\n")
         
-        stop_cmds = ["Z0"]
-        out.write(f"[stop]: {' '.join(stop_cmds)};\n")
+        out.write(f"[stop]: Z0;\n")
         
-    print(f"Generated {out_sk}")
+                
+        print(f"Generated {out_sk}")
 
 
 if __name__ == '__main__':

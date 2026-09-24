@@ -129,6 +129,11 @@ y127 %6 [] x127 yp127
 # === END OF SONG LOOP ===
 # When the final sequence finishes, it emits 'ce 127'.
 # This string stops the final patterns, and instantly restarts (z1) the first patterns AND the master pattern.
+127 [y15 z0 y31 z0 y47 z0 y63 z0 y0 z1 y16 z1 y32 z1 y48 z1 y127 z1] e>127
+/cex 127,4,127
+# === END OF SONG LOOP ===
+# When the final sequence finishes, it emits 'ce 127'.
+# This string stops the final patterns, and instantly restarts (z1) the first patterns AND the master pattern.
 [y15 z0 y31 z0 y47 z0 y63 z0 y0 z1 y16 z1 y32 z1 y48 z1 y127 z1] e>127
 /cex 127,4,127
 
@@ -461,7 +466,7 @@ y0
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a-0.10] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a-0.10 ce 0] x127
+[w104 n72 l1 s0 a-0.10 a] x127
 y16
 [s0 a-2.04] x64
 [w114 B1 n72 l1 s0 a10.00] x65
@@ -985,7 +990,7 @@ y1
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a1.48] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a1.48 ce 1] x127
+[w104 n72 l1 s0 a1.48 b] x127
 y17
 [w115 n72 l1 s0 a10.00] x64
 [w114 B1 n72 l1 s0 a10.00] x65
@@ -1509,7 +1514,7 @@ y2
 [w103 n72 l1 s0 a10.00] x124
 [w112 n72 l1 s0 a0.32] x125
 [n72 l1 s0 a10.00] x126
-[n72 l1 s0 a0.32 ce 2] x127
+[n72 l1 s0 a0.32 c] x127
 y18
 [w113 n77 l1 s0 a10.00] x64
 [] x65
@@ -2033,7 +2038,7 @@ y3
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a-0.10] x125
 [w101 n71 l1 s0 a10.00] x126
-[ce 3] x127
+[d] x127
 y19
 [s0 a-2.04] x64
 [w114 B1 n72 l1 s0 a10.00] x65
@@ -2557,7 +2562,7 @@ y4
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a1.48] x125
 [w102 n76 l1 s0 a10.00] x126
-[ce 4] x127
+[e] x127
 y20
 [w116 n67 l1 s0 a8.36] x64
 [v5 f6.24 v1 FF0 F5,0.50] x65
@@ -3081,7 +3086,7 @@ y5
 [w103 n72 l1 s0 a10.00] x124
 [w112 n72 l1 s0 a2.18] x125
 [w101 n71 l1 s0 a10.00] x126
-[n71 l1 s0 a10.00 ce 5] x127
+[n71 l1 s0 a10.00 f] x127
 y21
 [n63 l1 s0 a8.36 v1 F-1] x64
 [] x65
@@ -3605,7 +3610,7 @@ y6
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a1.48] x125
 [w102 n76 l1 s0 a10.00] x126
-[ce 6] x127
+[g] x127
 y22
 [w116 n67 l1 s0 a8.36] x64
 [v5 f6.24 v1 FF0 F5,0.50] x65
@@ -4129,7 +4134,7 @@ y7
 [w103 n72 l1 s0 a10.00] x124
 [w112 n72 l1 s0 a2.18] x125
 [w101 n71 l1 s0 a10.00] x126
-[n71 l1 s0 a10.00 ce 7] x127
+[n71 l1 s0 a10.00 h] x127
 y23
 [n63 l1 s0 a8.36 v1 F-1] x64
 [] x65
@@ -4653,7 +4658,7 @@ y8
 [w114 n72 l1 s0 a10.00] x124
 [n48 l1 s0 a10.00] x125
 [] x126
-[ce 8] x127
+[i] x127
 y24
 [w116 B1 n79 l1 s0 a8.36] x64
 [n74 l1 s0 a8.36] x65
@@ -5177,7 +5182,7 @@ y9
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a-0.10] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a-0.10 ce 9] x127
+[w104 n72 l1 s0 a-0.10 j] x127
 y25
 [s0 a-2.04] x64
 [w114 B1 n74 l1 s0 a10.00] x65
@@ -5701,7 +5706,7 @@ y10
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a-0.10] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a-0.10 ce 10] x127
+[w104 n72 l1 s0 a-0.10 k] x127
 y26
 [s0 a-2.04] x64
 [w114 B1 n74 l1 s0 a10.00] x65
@@ -6225,7 +6230,7 @@ y11
 [n72 l1 s0 a3.98] x124
 [n72 l1 s0 a-0.10] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a-0.10 ce 11] x127
+[w104 n72 l1 s0 a-0.10 l] x127
 y27
 [+-1 a2.50 +-2 a2.18 +-3 a1.84 +-4 a1.48 +-5 a1.11] x64
 [] x65
@@ -6749,7 +6754,7 @@ y12
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a-0.10] x125
 [w112 n72 l1 s0 a10.00] x126
-[w104 n72 l1 s0 a-0.10 ce 12] x127
+[w104 n72 l1 s0 a-0.10 m] x127
 y28
 [w105 n65 l1 s0 a10.00] x64
 [s0 a-2.04] x65
@@ -7273,7 +7278,7 @@ y13
 [w103 n72 l1 s0 a10.00] x124
 [w104 n72 l1 s0 a1.48] x125
 [w102 n76 l1 s0 a10.00] x126
-[ce 13] x127
+[n] x127
 y29
 [w116 n67 l1 s0 a8.36] x64
 [v5 f6.24 v1 FF0 F5,0.50] x65
@@ -7797,7 +7802,7 @@ y14
 [w103 n72 l1 s0 a10.00] x124
 [w112 n72 l1 s0 a2.18] x125
 [w101 n71 l1 s0 a10.00] x126
-[n71 l1 s0 a10.00 ce 14] x127
+[n71 l1 s0 a10.00 o] x127
 y30
 [n63 l1 s0 a8.36 v1 F-1] x64
 [] x65
@@ -8059,7 +8064,7 @@ y15
 [] x60
 [] x61
 [] x62
-[ce 127 # LOOP ENTIRE SONG] x63
+[ce 127 # LOOP ENTIRE SONG ce 127 # LOOP ENTIRE SONG] x63
 y31
 [v1 a5 t0,0,1,0 z%6 w113 B0 n72 l1 s0 a10.00] x0
 [] x1
@@ -8258,5 +8263,21 @@ y63
 
 # === MACROS ===
 # The file does not start automatically. Type 'play' to begin, and 'stop' to halt.
-[play]: v0 p-0.6 v1 p0.6 v2 p0.6 v3 p-0.6 v4 w0 m1 l1 B1 v5 w0 m1 l1 B1 v6 w0 m1 l1 B1 v7 w0 m1 l1 B1 y0 z1 y16 z1 y32 z1 y48 z1 y127 z1;
+[play] v0 p-0.6 v1 p0.6 v2 p0.6 v3 p-0.6 v4 w0 m1 l1 B1 v5 w0 m1 l1 B1 v6 w0 m1 l1 B1 v7 w0 m1 l1 B1 y0 z1 y16 z1 y32 z1 y48 z1;
 [stop]: Z0;
+[e0] Z0 y1 z1 y17 z1 y33 z1 y49 z1;
+[e1] Z0 y2 z1 y18 z1 y34 z1 y50 z1;
+[e2] Z0 y3 z1 y19 z1 y35 z1 y51 z1;
+[e3] Z0 y4 z1 y20 z1 y36 z1 y52 z1;
+[e4] Z0 y5 z1 y21 z1 y37 z1 y53 z1;
+[e5] Z0 y6 z1 y22 z1 y38 z1 y54 z1;
+[e6] Z0 y7 z1 y23 z1 y39 z1 y55 z1;
+[e7] Z0 y8 z1 y24 z1 y40 z1 y56 z1;
+[e8] Z0 y9 z1 y25 z1 y41 z1 y57 z1;
+[e9] Z0 y10 z1 y26 z1 y42 z1 y58 z1;
+[e10] Z0 y11 z1 y27 z1 y43 z1 y59 z1;
+[e11] Z0 y12 z1 y28 z1 y44 z1 y60 z1;
+[e12] Z0 y13 z1 y29 z1 y45 z1 y61 z1;
+[e13] Z0 y14 z1 y30 z1 y46 z1 y62 z1;
+[e14] Z0 y15 z1 y31 z1 y47 z1 y63 z1;
+[zz]: play
