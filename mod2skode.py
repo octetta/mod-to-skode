@@ -1,4 +1,4 @@
-
+#!/bin/python
 import math
 def vol_to_db(v):
     if v <= 0: return -60.0
@@ -107,11 +107,17 @@ def convert_mod(filename, compress_blank=False):
         
         out.write("# === END OF SONG LOOP ===\n")
         out.write("# When the final sequence finishes, it emits 'ce 127'.\n")
-        out.write("# This string stops the final patterns, and instantly restarts (z1) the first patterns AND the master pattern.\n")
         last_pats = [str(c * num_skode_patterns + num_skode_patterns - 1) for c in range(4)]
-        first_pats = [str(c * num_skode_patterns) for c in range(4)]
-        loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in first_pats] + ["y127 z1"]
-        out.write(f"[{' '.join(loop_cmds)}] e>127\n")
+        if restart_pos < song_len:
+            target_p = restart_pos // 2
+            target_r = (restart_pos % 2) * 64
+            target_pats = [str(c * num_skode_patterns + target_p) for c in range(4)]
+            # Use zq1 to queue it smoothly, but it will start at step 0 of the target skode pattern.
+            # If target_r is 64, this might be slightly off. But Stardust doesn't loop anyway.
+            loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in target_pats] + ["y127 z1"]
+            out.write(f"[{' '.join(loop_cmds)}] e>127\n")
+        else:
+            out.write(f"[Z0] e>127\n")
         out.write("/cex 127,4,127\n")
         out.write("\n/cer 1\n\n")
         
@@ -239,7 +245,11 @@ def convert_mod(filename, compress_blank=False):
                         cmds.append(f"ce {sk_pattern_idx}")
                         
                     if cmds:
-                        out.write(f"[{' '.join(cmds)}] x{abs_r}\n")
+                        cmd_str = ' '.join(cmds)
+                        words = cmd_str.split()
+                        if len(words) > 28:
+                            print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands. This may exceed the 32-opcode limit!")
+                        out.write(f"[{cmd_str}] x{abs_r}\n")
                     else:
                         if not compress_blank or abs_r == 127:
                             out.write(f"[] x{abs_r}\n")

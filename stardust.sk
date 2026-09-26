@@ -128,8 +128,7 @@ y127 %6 [] x127 yp127
 /cex 14,4,14
 # === END OF SONG LOOP ===
 # When the final sequence finishes, it emits 'ce 127'.
-# This string stops the final patterns, and instantly restarts (z1) the first patterns AND the master pattern.
-[y15 z0 y31 z0 y47 z0 y63 z0 y0 z1 y16 z1 y32 z1 y48 z1 y127 z1] e>127
+[Z0] e>127
 /cex 127,4,127
 
 /cer 1
