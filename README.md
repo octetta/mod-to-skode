@@ -5,15 +5,18 @@
 ## Usage
 
 ```bash
-python mod2skode.py input.mod [-o output.sk] [-c]
+python mod2skode.py input.mod [-o output.sk] [-c] [-x]
 ```
 
 - `input.mod`: The path to the ProTracker MOD file you want to convert.
-- `-o`, `--output`: Specifies the output `.sk` file. If omitted, the Skode text is printed to `stdout`.
+- `-o`, `--output`: Specifies the output `.sk` or `.zip` file. If the file ends in `.zip`, the script and all converted 16-bit WAV samples are automatically bundled into a single `.zip` file ready to be mounted via Skode's VFS (`%z output.zip`). If omitted, the Skode text is printed to `stdout`.
+- `-x`, `--extract`: Explicitly extracts the instrument samples natively to disk inside a `samples/` directory alongside the generated script.
 - `-c`, `--compress`: Compresses blank sequencer rows (omitting empty `[] x{step}` declarations) to significantly reduce the output file size.
 
-### Getting Samples
-The converter expects the extracted audio samples to be placed in a `samples/` directory relative to the generated `.sk` file (e.g., `samples/inst_01.wav`, `samples/inst_02.wav`).
+### Sample Extraction
+By default, the converter relies on the presence of WAV files inside a `samples/` directory. However, you can use the built-in extraction features to handle this automatically:
+1. **ZIP Output (`-o file.zip`)**: Bundles the `.sk` script and all automatically converted 16-bit signed WAV files (at 16574 Hz) into a single archive without writing WAVs to your local disk.
+2. **Disk Extraction (`-x`)**: Automatically rips, converts, and saves the 16-bit WAV files directly to a local `samples/` directory.
 
 ## How it Works
 
