@@ -179,7 +179,29 @@ def convert_mod(filename, compress_blank=False):
                     
                     if note is not None:
                         current_note[c] = note
-                        cmds.append(f"n{note} l1")
+                        cmds.append("fb0") # Reset pitch bend
+                        
+                        note_prefix = ""
+                        note_suffix = ""
+                        
+                        if effect == 0xE:
+                            ext_type = param >> 4
+                            ext_val = param & 0x0F
+                            if ext_type == 0x9 and ext_val > 0:  # E9x Retrigger
+                                ratchets = max(1, current_speed // ext_val)
+                                if ratchets > 1:
+                                    note_suffix = f" z*{ratchets}"
+                            elif ext_type == 0xD and ext_val > 0:  # EDx Note Delay
+                                delay_time = ext_val / 96.0
+                                note_prefix = f"+{delay_time:.5f} "
+                                
+                        if effect == 0x3:
+                            # Tone portamento (Glide to note). Do not re-trigger envelope (no l1).
+                            glide_time = 0.5 if param == 0 else (10.0 / param)
+                            cmds.append(f"{note_prefix}g{glide_time:.2f} n{note}{note_suffix}")
+                        else:
+                            # Normal note trigger
+                            cmds.append(f"{note_prefix}n{note} l1{note_suffix}")
 
                     if effect == 0xC:
                         current_vol[c] = max(0, min(64, param))
@@ -187,13 +209,22 @@ def convert_mod(filename, compress_blank=False):
                     if current_vol[c] != old_vol or (note is not None):
                         cmds.append(f"s0 a{vol_to_db(current_vol[c]):.2f}")
                         
+                    elif effect in (0x1, 0x2) and param > 0:
+                        sign = 1 if effect == 0x1 else -1
+                        # Tracker portamento is additive over time. 
+                        # We approximate by incrementing the bend across the ticks of the row.
+                        # param is speed per tick.
+                        for t in range(1, current_speed):
+                            bend_val = sign * (param * t) / 255.0
+                            cmds.append(f"+{t / 96.0:.5f} fb{bend_val:.3f}")
+
                     elif effect == 0xA and param > 0:
                         up = param >> 4
                         down = param & 0x0F
                         delta = up if up > 0 else -down
                         for t in range(1, current_speed):
                             current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                            cmds.append(f"+-{t} a{vol_to_db(current_vol[c]):.2f}")
+                            cmds.append(f"+{t / 96.0:.5f} a{vol_to_db(current_vol[c]):.2f}")
                             
 
                     # 4 - Vibrato
@@ -218,7 +249,7 @@ def convert_mod(filename, compress_blank=False):
                             delta = up if up > 0 else -down
                             for t in range(1, current_speed):
                                 current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                                cmds.append(f"+-{t} a{vol_to_db(current_vol[c]):.2f}")
+                                cmds.append(f"+{t / 96.0:.5f} a{vol_to_db(current_vol[c]):.2f}")
                                 
                     if effect != 0x4 and effect != 0x6 and vib_active[c]:
                         # Turn off vibrato
@@ -234,7 +265,7 @@ def convert_mod(filename, compress_blank=False):
                             if step == 1: offset = x
                             elif step == 2: offset = y
                             if current_note[c] > 0:
-                                cmds.append(f"+-{t} n{current_note[c] + offset}")
+                                cmds.append(f"+{t / 96.0:.5f} n{current_note[c] + offset}")
                     
                     abs_r = row_offset + r
                     
