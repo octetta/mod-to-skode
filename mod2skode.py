@@ -19,7 +19,7 @@ def closest_period(p):
     return min(PERIODS.keys(), key=lambda k: abs(k - p)) if p > 0 else 0
 
 
-def convert_mod(filename, compress_blank=False):
+def convert_mod(filename, out_file=None, compress_blank=False):
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -65,10 +65,25 @@ def convert_mod(filename, compress_blank=False):
             pattern.append(row)
         patterns.append(pattern)
         
-    out_sk = os.path.join(os.path.dirname(filename), 'stardust.sk')
-    with open(out_sk, 'w') as out:
-        out.write("# Stardust Memories\n")
-        out.write("M 125 96\n\n")
+    out_fd = open(out_file, 'w') if out_file else sys.stdout
+    try:
+        out = out_fd
+        out.write(f"# Converted from {os.path.basename(filename)}\n")
+        
+        # Scan for initial tempo and speed in the first row(s)
+        initial_speed = 6
+        initial_tempo = 125
+        if patterns:
+            for c in range(4):
+                _, _, eff, param = patterns[sequence[0]][0][c]
+                if eff == 0xF:
+                    if param < 32:
+                        initial_speed = param
+                    else:
+                        initial_tempo = param
+                        
+        ticks_per_measure = initial_speed * 16
+        out.write(f"M {initial_tempo} {ticks_per_measure}\n\n")
         
         for inst in instruments:
             if inst['len'] > 2:
@@ -298,11 +313,19 @@ def convert_mod(filename, compress_blank=False):
         out.write(f"[stop]: Z0;\n")
         
                 
-        print(f"Generated {out_sk}")
+        if out_file:
+            print(f"Generated {out_file}", file=sys.stderr)
+    finally:
+        if out_file:
+            out_fd.close()
 
 
 if __name__ == '__main__':
-    compress = '--compress' in sys.argv
-    filename = sys.argv[1] if sys.argv[1] != '--compress' else sys.argv[2]
-    convert_mod(filename, compress_blank=compress)
+    import argparse
+    parser = argparse.ArgumentParser(description="Convert MOD to Skode")
+    parser.add_argument("filename", help="Input MOD file")
+    parser.add_argument("-o", "--output", help="Output .sk file (default: stdout)", default=None)
+    parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
+    args = parser.parse_args()
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress)
 
