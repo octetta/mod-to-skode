@@ -6,6 +6,10 @@ def vol_to_db(v):
 
 import sys
 import struct
+import zipfile
+import io
+import wave
+import os
 import os
 import math
 
@@ -15,11 +19,21 @@ PERIODS = {
     214: 69,    202: 70,    190: 71,    180: 72,    170: 73,    160: 74,    151: 75,    143: 76,    135: 77,    127: 78,    120: 79,    113: 80,
 }
 
+
+def period_to_freq(p):
+    if p <= 0: return 0
+    return 3546895.0 / p
+
+def period_to_midi(p):
+    f = period_to_freq(p)
+    if f <= 0: return 0
+    return 69.0 + 12.0 * math.log2(f / 440.0)
+
 def closest_period(p):
     return min(PERIODS.keys(), key=lambda k: abs(k - p)) if p > 0 else 0
 
 
-def convert_mod(filename, out_file=None, compress_blank=False):
+def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -61,11 +75,16 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                 effect = b[2] & 0x0F
                 param = b[3]
                 midi_note = PERIODS.get(closest_period(period)) if period > 0 else None
-                row.append((midi_note, inst, effect, param))
+                row.append((midi_note, inst, effect, param, period))
             pattern.append(row)
         patterns.append(pattern)
         
-    out_fd = open(out_file, 'w') if out_file else sys.stdout
+    sample_data_start = offset
+    is_zip = out_file and out_file.endswith('.zip')
+    if is_zip:
+        out_fd = io.StringIO()
+    else:
+        out_fd = open(out_file, 'w') if out_file else sys.stdout
     try:
         out = out_fd
         out.write(f"# Converted from {os.path.basename(filename)}\n")
@@ -75,7 +94,7 @@ def convert_mod(filename, out_file=None, compress_blank=False):
         initial_tempo = 125
         if patterns:
             for c in range(4):
-                _, _, eff, param = patterns[sequence[0]][0][c]
+                _, _, eff, param, _ = patterns[sequence[0]][0][c]
                 if eff == 0xF:
                     if param < 32:
                         initial_speed = param
@@ -84,12 +103,18 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                         
         ticks_per_measure = initial_speed * 16
         out.write(f"M {initial_tempo} {ticks_per_measure}\n\n")
+        out.write("# === INITIALIZATION ===\n")
+        out.write("V-12\n")
+        for c in range(4):
+            out.write(f"v{c} p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0\n")
+            out.write(f"v{c+4} w0 t0,0,1,0 m1 n60 l1 B1\n")
+        out.write("\n")
         
         for inst in instruments:
             if inst['len'] > 2:
                 wave_id = 100 + inst['id']
                 out.write(f"[samples/inst_{inst['id']:02d}.wav] /ws {wave_id}\n")
-                if inst['loop_len'] > 2:
+                if inst['loop_len'] > 2 and not (inst['len'] > 4000 and inst['loop_len'] < 200):
                     out.write(f"WL {wave_id},{inst['loop_start']},{inst['loop_start'] + inst['loop_len']}\n")
                 
         out.write("\n")
@@ -140,9 +165,16 @@ def convert_mod(filename, out_file=None, compress_blank=False):
         current_vol = [64, 64, 64, 64]
         current_speed = 6
         current_note = [0, 0, 0, 0]
+        current_period = [0, 0, 0, 0]
+        target_period = [0, 0, 0, 0]
+        portamento_speed = [0, 0, 0, 0]
         vib_speed = [0, 0, 0, 0]
+        vol_slide_speed = [0, 0, 0, 0]
         vib_depth = [0, 0, 0, 0]
         vib_active = [False, False, False, False]
+        trem_active = [False, False, False, False]
+        trem_speed = [0, 0, 0, 0]
+        trem_depth = [0, 0, 0, 0]
         current_loop = [None, None, None, None]
         current_wave = [None, None, None, None]
 
@@ -158,11 +190,11 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                 pat_id = c * num_skode_patterns + sk_pattern_idx
                 out.write(f"y{pat_id}\n")
                 for r, row in enumerate(pattern):
-                    note, inst, effect, param = row[c]
+                    note, inst, effect, param, period = row[c]
                     
                     row_speed_cmd = None
                     for scan_c in range(4):
-                        _, _, s_eff, s_param = row[scan_c]
+                        _, _, s_eff, s_param, _ = row[scan_c]
                         if s_eff == 0xF and s_param < 32:
                             row_speed_cmd = s_param
                     
@@ -172,7 +204,7 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                     cmds = []
                     
                     if r == 0 and row_offset == 0:
-                        cmds.append(f"v{c} a5 t0,0,1,0") # Assign Voice 0 to Channel 0, Voice 1 to Channel 1...
+                        cmds.append(f"v{c}") # Bind sequence to voice
                     
                     if row_speed_cmd is not None:
                         cmds.append(f"z%{row_speed_cmd}")
@@ -186,76 +218,120 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                         for ins in instruments:
                             if ins['id'] == inst:
                                 current_vol[c] = ins['vol']
-                                wants_loop = (ins['loop_len'] > 2)
+                                wants_loop = (ins['loop_len'] > 2) and not (ins['len'] > 4000 and ins['loop_len'] < 200)
                                 if current_loop[c] != wants_loop:
                                     cmds.append("B1" if wants_loop else "B0")
                                     current_loop[c] = wants_loop
                                 break
                     
-                    if note is not None:
+
+                    # Portamento parameter memory
+                    if effect in (0x1, 0x2, 0x3, 0x5) and param > 0:
+                        portamento_speed[c] = param
+                        
+                    # Target period for 0x3
+                    if period > 0 and effect in (0x3, 0x5):
+                        target_period[c] = period
+                        
+                    # Missing Volume logic
+                    old_vol = current_vol[c]
+                    
+                    if effect == 0xC:
+                        current_vol[c] = max(0, min(64, param))
+                        
+                    if current_vol[c] != old_vol or (note is not None and effect not in (0x3, 0x5)):
+                        cmds.append(f"a{vol_to_db(current_vol[c]):.2f}")
+
+                    # Note trigger
+                    if note is not None and effect not in (0x3, 0x5):
                         current_note[c] = note
-                        cmds.append("fb0") # Reset pitch bend
+                        current_period[c] = period
                         
                         note_prefix = ""
                         note_suffix = ""
-                        
                         if effect == 0xE:
                             ext_type = param >> 4
                             ext_val = param & 0x0F
                             if ext_type == 0x9 and ext_val > 0:  # E9x Retrigger
-                                ratchets = max(1, current_speed // ext_val)
-                                if ratchets > 1:
-                                    note_suffix = f" z*{ratchets}"
+                                # we handle retriggers by emitting +time n{note} l1
+                                pass
                             elif ext_type == 0xD and ext_val > 0:  # EDx Note Delay
                                 delay_time = ext_val / 96.0
                                 note_prefix = f"+{delay_time:.5f} "
                                 
-                        if effect == 0x3:
-                            # Tone portamento (Glide to note). Do not re-trigger envelope (no l1).
-                            glide_time = 0.5 if param == 0 else (10.0 / param)
-                            cmds.append(f"{note_prefix}g{glide_time:.2f} n{note}{note_suffix}")
-                        else:
-                            # Normal note trigger
-                            cmds.append(f"{note_prefix}n{note} l1{note_suffix}")
-
-                    if effect == 0xC:
-                        current_vol[c] = max(0, min(64, param))
+                        cmds.append("fb0") # Reset bend
+                        cmds.append(f"{note_prefix}n{note} l1")
                         
-                    if current_vol[c] != old_vol or (note is not None):
-                        cmds.append(f"s0 a{vol_to_db(current_vol[c]):.2f}")
+                        if effect == 0xE and ext_type == 0x9 and ext_val > 0:
+                            for t in range(ext_val, current_speed, ext_val):
+                                cmds.append(f"+{t / 96.0:.5f} n{note} l1")
                         
-                    elif effect in (0x1, 0x2) and param > 0:
-                        sign = 1 if effect == 0x1 else -1
-                        # Tracker portamento is additive over time. 
-                        # We approximate by incrementing the bend across the ticks of the row.
-                        # param is speed per tick.
-                        for t in range(1, current_speed):
-                            bend_val = sign * (param * t) / 255.0
-                            cmds.append(f"+{t / 96.0:.5f} fb{bend_val:.3f}")
+                    # Handle Portamento execution tick-by-tick
+                    if effect in (0x1, 0x2, 0x3, 0x5):
+                        speed = portamento_speed[c]
+                        if speed > 0 and current_period[c] > 0:
+                            for t in range(1, current_speed):
+                                if effect == 0x1: # Slide up (period decreases)
+                                    current_period[c] = max(113, current_period[c] - speed)
+                                elif effect == 0x2: # Slide down (period increases)
+                                    current_period[c] = min(856, current_period[c] + speed)
+                                elif effect in (0x3, 0x5): # Slide to target note
+                                    if current_period[c] < target_period[c]:
+                                        current_period[c] = min(target_period[c], current_period[c] + speed)
+                                    elif current_period[c] > target_period[c]:
+                                        current_period[c] = max(target_period[c], current_period[c] - speed)
+                                        
+                                # Calculate pitch bend in semitones relative to current_note
+                                current_f_midi = period_to_midi(current_period[c])
+                                bend_semitones = current_f_midi - current_note[c]
+                                
+                                # Skode fb is normalized -1.0 to 1.0, and default freq_bend_range is 2.0 semitones.
+                                # To allow bends larger than 2 semitones, we can emit a parameter change!
+                                # fb <val>, fbp <range>. But let's just scale fb assuming a range of 24.
+                                # Wait, if we just set `fbp 24` once when we trigger the note, we can use `fb` easily!
+                                # Or we can just emit `fbp` if the bend exceeds the current range...
+                                # By default range is 2. Let's just emit `fb {bend_semitones / 2.0}` and if it clips, it clips.
+                                # Actually, tracker bends easily exceed 2 semitones. 
+                                # Let's change the voice's bend range to 12 semitones when a tracker instrument is loaded, 
+                                # or just emit `fbp 12`!
+                                cmds.append(f"+{t / 96.0:.5f} fb{bend_semitones / 12.0:.3f}")
+                                if t == 1: cmds.append("fbp12") # Ensure range is 12
 
-                    elif effect == 0xA and param > 0:
+                    if effect in (0xA, 0x5, 0x6) and param > 0:
                         up = param >> 4
                         down = param & 0x0F
-                        delta = up if up > 0 else -down
-                        for t in range(1, current_speed):
-                            current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                            cmds.append(f"+{t / 96.0:.5f} a{vol_to_db(current_vol[c]):.2f}")
+                        vol_slide_speed[c] = up if up > 0 else -down
+                        
+                    if effect in (0xA, 0x5, 0x6):
+                        delta = vol_slide_speed[c]
+                        if delta != 0:
+                            for t in range(1, current_speed):
+                                current_vol[c] = max(0, min(64, current_vol[c] + delta))
+                                cmds.append(f"+{t / 96.0:.5f} a{vol_to_db(current_vol[c]):.2f}")
                             
 
-                    # 4 - Vibrato
-                    elif effect == 0x4 or effect == 0x6:
+                    # 4 - Vibrato, 7 - Tremolo
+                    elif effect in (0x4, 0x6, 0x7):
                         if effect == 0x4 and param > 0:
                             x = param >> 4
                             y = param & 0x0F
                             if x > 0: vib_speed[c] = x
                             if y > 0: vib_depth[c] = y
+                        elif effect == 0x7 and param > 0:
+                            x = param >> 4
+                            y = param & 0x0F
+                            if x > 0: trem_speed[c] = x
+                            if y > 0: trem_depth[c] = y
                             
-                        if not vib_active[c]:
+                        if effect in (0x4, 0x6) and not vib_active[c]:
                             rate_hz = vib_speed[c] * 0.78
-                            # Depth math: modulator_hz * control = dev_hz
-                            # We want a deviation roughly proportional to y. Let's try control = y * 0.5
                             cmds.append(f"v{c+4} f{rate_hz:.2f} v{c} FF0 F{c+4},{vib_depth[c]*0.5:.2f}")
                             vib_active[c] = True
+                            
+                        if effect == 0x7 and not trem_active[c]:
+                            rate_hz = trem_speed[c] * 0.78
+                            cmds.append(f"v{c+4} f{rate_hz:.2f} v{c} A{c+4},{trem_depth[c]*0.05:.2f}")
+                            trem_active[c] = True
                             
                         if effect == 0x6 and param > 0:
                             # 6 is Vibrato + Volume slide!
@@ -266,21 +342,24 @@ def convert_mod(filename, out_file=None, compress_blank=False):
                                 current_vol[c] = max(0, min(64, current_vol[c] + delta))
                                 cmds.append(f"+{t / 96.0:.5f} a{vol_to_db(current_vol[c]):.2f}")
                                 
-                    if effect != 0x4 and effect != 0x6 and vib_active[c]:
-                        # Turn off vibrato
+                    if effect not in (0x4, 0x6) and vib_active[c]:
                         cmds.append(f"v{c} F-1")
                         vib_active[c] = False
+                        
+                    if effect != 0x7 and trem_active[c]:
+                        cmds.append(f"v{c} A") # Turn off amp mod
+                        trem_active[c] = False
 
                     elif effect == 0x0 and param > 0:
                         x = param >> 4
                         y = param & 0x0F
                         for t in range(1, current_speed):
                             step = t % 3
-                            offset = 0
-                            if step == 1: offset = x
-                            elif step == 2: offset = y
+                            arp_offset = 0
+                            if step == 1: arp_offset = x
+                            elif step == 2: arp_offset = y
                             if current_note[c] > 0:
-                                cmds.append(f"+{t / 96.0:.5f} n{current_note[c] + offset}")
+                                cmds.append(f"+{t / 96.0:.5f} n{current_note[c] + arp_offset}")
                     
                     abs_r = row_offset + r
                     
@@ -305,19 +384,95 @@ def convert_mod(filename, out_file=None, compress_blank=False):
         out.write("# === MACROS ===\n")
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
         
-        play_cmds = [f"y{c * num_skode_patterns} z1" for c in range(4)] + ["y127 z1"]
-        lfo_cmds = [f"v{c+4} w0 m1 l1 B1" for c in range(4)]
-        pan_cmds = [f"v{c} p{-0.6 if c in [0, 3] else 0.6}" for c in range(4)]
-        out.write(f"[play]: {' '.join(pan_cmds + lfo_cmds + play_cmds)};\n")
+        play_cmds = [f"v{c} y{c * num_skode_patterns} z1" for c in range(4)] + ["v0 y127 z1"]
+        
+        out.write(f"# Type 'play' to begin.\n")
+        out.write(f"[play]: {' '.join(play_cmds)};\n")
         
         out.write(f"[stop]: Z0;\n")
         
                 
         if out_file:
             print(f"Generated {out_file}", file=sys.stderr)
-    finally:
-        if out_file:
+            
+        if is_zip:
+            # We need to extract the samples and build the zip
+            sk_content = out_fd.getvalue()
             out_fd.close()
+            
+            with zipfile.ZipFile(out_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # Add main script
+                zf.writestr('main.sk', sk_content)
+                
+                # Extract samples
+                samp_offset = sample_data_start
+                for ins in instruments:
+                    length = ins['len']
+                    if length > 2:
+                        raw_data = data[samp_offset:samp_offset+length]
+                        
+                        # Convert 8-bit signed to 16-bit signed for WAV
+                        samples_16 = [ (b if b < 128 else b - 256) * 256 for b in raw_data ]
+                        data_16 = struct.pack('<' + 'h'*len(samples_16), *samples_16)
+                        
+                        wav_io = io.BytesIO()
+                        with wave.open(wav_io, 'wb') as w:
+                            w.setnchannels(1)
+                            w.setsampwidth(2)
+                            w.setframerate(16574) # 16574 ensures it plays at 8287Hz when triggered at note 57 (A3)
+                            w.writeframes(data_16)
+                            
+                        zf.writestr(f"samples/inst_{ins['id']:02d}.wav", wav_io.getvalue())
+                        
+                    samp_offset += length
+    finally:
+        if not is_zip and out_file:
+            out_fd.close()
+            
+        if not is_zip and extract:
+            if not os.path.exists('samples'):
+                os.makedirs('samples')
+            samp_offset = sample_data_start
+            for ins in instruments:
+                length = ins['len']
+                if length > 2:
+                    raw_data = data[samp_offset:samp_offset+length]
+                    samples_16 = [ (b if b < 128 else b - 256) * 256 for b in raw_data ]
+                    data_16 = struct.pack('<' + 'h'*len(samples_16), *samples_16)
+                    wav_io = io.BytesIO()
+                    with wave.open(wav_io, 'wb') as w:
+                        w.setnchannels(1)
+                        w.setsampwidth(2)
+                        w.setframerate(16574)
+                        w.writeframes(data_16)
+                    with open(f"samples/inst_{ins['id']:02d}.wav", 'wb') as wf:
+                        wf.write(wav_io.getvalue())
+                samp_offset += length
+            print("Extracted samples to samples/ directory", file=sys.stderr)
+
+            
+        if not is_zip and getattr(args, 'extract', False):
+            if not os.path.exists('samples'):
+                os.makedirs('samples')
+            samp_offset = sample_data_start
+            for ins in instruments:
+                length = ins['len']
+                if length > 2:
+                    raw_data = data[samp_offset:samp_offset+length]
+                    samples_16 = [ (b if b < 128 else b - 256) * 256 for b in raw_data ]
+                    data_16 = struct.pack('<' + 'h'*len(samples_16), *samples_16)
+                    wav_io = io.BytesIO()
+                    with wave.open(wav_io, 'wb') as w:
+                        w.setnchannels(1)
+                        w.setsampwidth(2)
+                        w.setframerate(16574)
+                        w.writeframes(data_16)
+                    with open(f"samples/inst_{ins['id']:02d}.wav", 'wb') as wf:
+                        wf.write(wav_io.getvalue())
+                samp_offset += length
+            print("Extracted samples to samples/ directory", file=sys.stderr)
+
+
 
 
 if __name__ == '__main__':
@@ -326,6 +481,7 @@ if __name__ == '__main__':
     parser.add_argument("filename", help="Input MOD file")
     parser.add_argument("-o", "--output", help="Output .sk file (default: stdout)", default=None)
     parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
+    parser.add_argument("-x", "--extract", action="store_true", help="Extract samples to disk (creates samples/ dir)")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress)
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract)
 
