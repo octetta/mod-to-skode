@@ -1,3 +1,5 @@
+out/*
+xxx/*
 __pycache__/*
 samples/*
 mini-skred

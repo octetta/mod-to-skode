@@ -33,7 +33,7 @@ def closest_period(p):
     return min(PERIODS.keys(), key=lambda k: abs(k - p)) if p > 0 else 0
 
 
-def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
+def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False):
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -104,10 +104,10 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
         ticks_per_measure = initial_speed * 16
         out.write(f"M {initial_tempo} {ticks_per_measure}\n\n")
         out.write("# === INITIALIZATION ===\n")
-        out.write("V-12\n")
+        out.write("S0 S1 S2 S3 S4 S5 S6 S7\n")
         for c in range(4):
-            out.write(f"v{c} p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0\n")
-            out.write(f"v{c+4} w0 t0,0,1,0 m1 n60 l1 B1\n")
+            out.write(f"v{c} w0 m0 n60 l1 B1 p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0\n")
+            out.write(f"v{c+4} w0 m1 n60 l1 B1 t0,0,1,0\n")
         out.write("\n")
         
         for inst in instruments:
@@ -122,7 +122,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
         num_skode_patterns = math.ceil(len(sequence) / 2.0)
         
         for i in range(num_skode_patterns):
-            for c in range(4):
+            for c in range(5):
                 pat_id = c * num_skode_patterns + i
                 out.write(f"y{pat_id} %6\n")
                 
@@ -136,7 +136,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
         for i in range(num_skode_patterns - 1):
             next_i = i + 1
             cmds = []
-            for c in range(4):
+            for c in range(5):
                 cur_pat = c * num_skode_patterns + i
                 next_pat = c * num_skode_patterns + next_i
                 cmds.append(f"y{cur_pat} z0 y{next_pat} zq1")
@@ -154,7 +154,9 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
             target_pats = [str(c * num_skode_patterns + target_p) for c in range(4)]
             # Use zq1 to queue it smoothly, but it will start at step 0 of the target skode pattern.
             # If target_r is 64, this might be slightly off. But Stardust doesn't loop anyway.
-            loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in target_pats] + ["y127 z1"]
+            last_pats_5 = [str(c * num_skode_patterns + num_skode_patterns - 1) for c in range(5)]
+            target_pats_5 = [str(c * num_skode_patterns + target_p) for c in range(5)]
+            loop_cmds = [f"y{p} z0" for p in last_pats_5] + [f"y{p} z1" for p in target_pats_5] + ["y127 z1"]
             out.write(f"[{' '.join(loop_cmds)}] e>127\n")
         else:
             out.write(f"[Z0] e>127\n")
@@ -179,8 +181,13 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
         current_wave = [None, None, None, None]
 
 
+        pattern_text = {}
+        for c in range(4):
+            for sk_idx in range(num_skode_patterns):
+                pattern_text[(c, sk_idx)] = ""
+                
         for seq_idx, p_idx in enumerate(sequence):
-            out.write(f"# --- Sequence {seq_idx} (Pattern {p_idx}) ---\n")
+            # out.write(f"# --- Sequence {seq_idx} (Pattern {p_idx}) ---\n")
             pattern = patterns[p_idx]
             
             sk_pattern_idx = seq_idx // 2
@@ -188,15 +195,19 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
             
             for c in range(4):
                 pat_id = c * num_skode_patterns + sk_pattern_idx
-                out.write(f"y{pat_id}\n")
+                # out.write(f"y{pat_id}\n")
                 for r, row in enumerate(pattern):
                     note, inst, effect, param, period = row[c]
                     
                     row_speed_cmd = None
                     for scan_c in range(4):
                         _, _, s_eff, s_param, _ = row[scan_c]
-                        if s_eff == 0xF and s_param < 32:
-                            row_speed_cmd = s_param
+                        if s_eff == 0xF:
+                            if s_param < 32:
+                                row_speed_cmd = s_param
+                            else:
+                                if not (seq_idx == 0 and r == 0):
+                                    print(f"Warning: Mid-song tempo change (0xF {hex(s_param)}) at seq {seq_idx} row {r} ignored. Skode does not support dynamic tempo changes.", file=sys.stderr)
                     
                     if row_speed_cmd is not None:
                         current_speed = row_speed_cmd
@@ -363,38 +374,88 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
                     
                     abs_r = row_offset + r
                     
-                    is_last_seq = (seq_idx == len(sequence) - 1)
-                    if is_last_seq and r == 63 and c == 0:
-                        cmds.append("ce 127 # LOOP ENTIRE SONG")
-                    elif abs_r == 127 and c == 0 and sk_pattern_idx < num_skode_patterns - 1:
-                        cmds.append(f"ce {sk_pattern_idx}")
+                    pass
                         
                     if cmds:
                         cmd_str = ' '.join(cmds)
                         words = cmd_str.split()
                         if len(words) > 28:
-                            print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands. This may exceed the 32-opcode limit!")
-                        out.write(f"[{cmd_str}] x{abs_r}\n")
+                            print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands.")
+                        pattern_text[(c, sk_pattern_idx)] += f"[{cmd_str}] x{abs_r}\n"
                     else:
                         if not compress_blank or abs_r == 127:
-                            out.write(f"[] x{abs_r}\n")
-            out.write("\n")
+                            pattern_text[(c, sk_pattern_idx)] += f"[] x{abs_r}\n"""
+            # out.write("\n")
             
 
         out.write("# === MACROS ===\n")
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
         
-        play_cmds = [f"v{c} y{c * num_skode_patterns} z1" for c in range(4)] + ["v0 y127 z1"]
+        play_cmds = [f"v{c} y{pat_mapping[(c, 0)] if 'pat_mapping' in locals() else c * num_skode_patterns} z1" for c in range(5)] + ["v0 y127 z1"]
         
         out.write(f"# Type 'play' to begin.\n")
         out.write(f"[play]: {' '.join(play_cmds)};\n")
         
-        out.write(f"[stop]: Z0;\n")
+        out.write(f"[stop]: Z0 v0l0 v1l0 v2l0 v3l0;\n")
         
                 
         if out_file:
             print(f"Generated {out_file}", file=sys.stderr)
             
+        # Generate conductor track patterns
+        for sk_idx in range(num_skode_patterns):
+            pat_id = 4 * num_skode_patterns + sk_idx
+            pattern_text[(4, sk_idx)] = f"[ce {sk_idx}] x127\n"
+            if sk_idx == num_skode_patterns - 1:
+                pattern_text[(4, sk_idx)] = "[ce 127] x127\n"
+                
+        pat_mapping = {}
+        if dedupe:
+            unique_texts = {}
+            for c in range(5):
+                for sk_idx in range(num_skode_patterns):
+                    text = pattern_text[(c, sk_idx)]
+                    if text in unique_texts:
+                        pat_mapping[(c, sk_idx)] = unique_texts[text]
+                    else:
+                        pat_id = c * num_skode_patterns + sk_idx
+                        unique_texts[text] = pat_id
+                        pat_mapping[(c, sk_idx)] = pat_id
+                        out.write(f"y{pat_id}\n{text}")
+            print(f"Deduplication: {num_skode_patterns * 5} raw patterns reduced to {len(unique_texts)} unique patterns.")
+        else:
+            for c in range(5):
+                for sk_idx in range(num_skode_patterns):
+                    pat_id = c * num_skode_patterns + sk_idx
+                    pat_mapping[(c, sk_idx)] = pat_id
+                    out.write(f"y{pat_id}\n{pattern_text[(c, sk_idx)]}")
+        
+        # Macros
+        out.write("\n# === MACROS ===\n")
+        for i in range(num_skode_patterns - 1):
+            next_i = i + 1
+            cmds = []
+            for c in range(5):
+                cur_pat = pat_mapping[(c, i)]
+                next_pat = pat_mapping[(c, next_i)]
+                cmds.append(f"y{cur_pat} z0 y{next_pat} zq1")
+            
+            out.write(f"[{' '.join(cmds)}] e>{i}\n")
+            out.write(f"/cex {i},4,{i}\n")
+            
+        last_pats_5 = [str(pat_mapping[(c, num_skode_patterns - 1)]) for c in range(5)]
+        if restart_pos < song_len:
+            target_p = restart_pos // 2
+            target_pats_5 = [str(pat_mapping[(c, target_p)]) for c in range(5)]
+            loop_cmds = [f"y{p} z0" for p in last_pats_5] + [f"y{p} z1" for p in target_pats_5] + ["y127 z1"]
+            out.write(f"[{' '.join(loop_cmds)}] e>127\n")
+        else:
+            out.write(f"[Z0] e>127\n")
+        out.write("/cex 127,4,127\n\n/cer 1\n")
+
+
+
+        
         if is_zip:
             # We need to extract the samples and build the zip
             sk_content = out_fd.getvalue()
@@ -451,26 +512,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False):
             print("Extracted samples to samples/ directory", file=sys.stderr)
 
             
-        if not is_zip and getattr(args, 'extract', False):
-            if not os.path.exists('samples'):
-                os.makedirs('samples')
-            samp_offset = sample_data_start
-            for ins in instruments:
-                length = ins['len']
-                if length > 2:
-                    raw_data = data[samp_offset:samp_offset+length]
-                    samples_16 = [ (b if b < 128 else b - 256) * 256 for b in raw_data ]
-                    data_16 = struct.pack('<' + 'h'*len(samples_16), *samples_16)
-                    wav_io = io.BytesIO()
-                    with wave.open(wav_io, 'wb') as w:
-                        w.setnchannels(1)
-                        w.setsampwidth(2)
-                        w.setframerate(16574)
-                        w.writeframes(data_16)
-                    with open(f"samples/inst_{ins['id']:02d}.wav", 'wb') as wf:
-                        wf.write(wav_io.getvalue())
-                samp_offset += length
-            print("Extracted samples to samples/ directory", file=sys.stderr)
+
 
 
 
@@ -482,6 +524,7 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--output", help="Output .sk file (default: stdout)", default=None)
     parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
     parser.add_argument("-x", "--extract", action="store_true", help="Extract samples to disk (creates samples/ dir)")
+    parser.add_argument("-d", "--dedupe", action="store_true", help="Deduplicate Skode patterns (2-pass)")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract)
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe)
 
