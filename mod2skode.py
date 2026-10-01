@@ -106,8 +106,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write("# === INITIALIZATION ===\n")
         out.write("S0 S1 S2 S3 S4 S5 S6 S7\n")
         for c in range(4):
-            out.write(f"v{c} w0 m0 n60 l1 B1 p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0\n")
-            out.write(f"v{c+4} w0 m1 n60 l1 B1 t0,0,1,0\n")
+            out.write(f"v{c} w0 m0 n60 l1 B1 p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0 a1 f20000 F0 DD0 DT0 DS0 A0\n")
+            out.write(f"v{c+4} w0 m1 n60 l1 B1 t0,0,1,0 a1 f20000 F0 DD0 DT0 DS0 A0\n")
         out.write("\n")
         
         for inst in instruments:
@@ -200,6 +200,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     note, inst, effect, param, period = row[c]
                     
                     row_speed_cmd = None
+                    row_tempo_cmd = None
                     for scan_c in range(4):
                         _, _, s_eff, s_param, _ = row[scan_c]
                         if s_eff == 0xF:
@@ -207,10 +208,14 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                                 row_speed_cmd = s_param
                             else:
                                 if not (seq_idx == 0 and r == 0):
-                                    print(f"Warning: Mid-song tempo change (0xF {hex(s_param)}) at seq {seq_idx} row {r} ignored. Skode does not support dynamic tempo changes.", file=sys.stderr)
+                                    row_tempo_cmd = s_param
                     
                     if row_speed_cmd is not None:
                         current_speed = row_speed_cmd
+                    if row_tempo_cmd is not None:
+                        # Only apply tempo changes once per row, on voice 0 to save space
+                        if c == 0:
+                            pass # We'll handle appending to cmds below
 
                     cmds = []
                     
@@ -219,6 +224,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     
                     if row_speed_cmd is not None:
                         cmds.append(f"z%{row_speed_cmd}")
+                    if row_tempo_cmd is not None and c == 0:
+                        cmds.append(f"M{row_tempo_cmd},{current_speed * 16}")
 
                     old_vol = current_vol[c]
 
