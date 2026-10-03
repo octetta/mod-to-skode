@@ -33,7 +33,7 @@ def closest_period(p):
     return min(PERIODS.keys(), key=lambda k: abs(k - p)) if p > 0 else 0
 
 
-def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False):
+def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False, max_steps=0):
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -119,7 +119,10 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                 
         out.write("\n")
         
-        num_skode_patterns = math.ceil(len(sequence) / 2.0)
+        mods_per_pattern = max(1, max_steps // 64) if max_steps > 0 else len(sequence)
+        skode_steps = mods_per_pattern * 64
+        s_last = skode_steps - 1
+        num_skode_patterns = math.ceil(len(sequence) / mods_per_pattern)
         
         for i in range(num_skode_patterns):
             for c in range(5):
@@ -131,7 +134,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write("# y127 is an empty 128-step pattern set as the 'Master' (yp127).\n")
         out.write("# Because it is the master, any pattern launched with 'zq1' (queue start)\n")
         out.write("# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n")
-        out.write("y127 %6 [] x127 yp127\n\n")
+        out.write(f"y127 %6 [] x{s_last} yp127\n\n")
         
         for i in range(num_skode_patterns - 1):
             next_i = i + 1
@@ -149,8 +152,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write("# When the final sequence finishes, it emits 'ce 127'.\n")
         last_pats = [str(c * num_skode_patterns + num_skode_patterns - 1) for c in range(4)]
         if restart_pos < song_len:
-            target_p = restart_pos // 2
-            target_r = (restart_pos % 2) * 64
+            target_p = restart_pos // mods_per_pattern
+            target_r = (restart_pos % mods_per_pattern) * 64
             target_pats = [str(c * num_skode_patterns + target_p) for c in range(4)]
             # Use zq1 to queue it smoothly, but it will start at step 0 of the target skode pattern.
             # If target_r is 64, this might be slightly off. But Stardust doesn't loop anyway.
@@ -190,8 +193,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             # out.write(f"# --- Sequence {seq_idx} (Pattern {p_idx}) ---\n")
             pattern = patterns[p_idx]
             
-            sk_pattern_idx = seq_idx // 2
-            row_offset = (seq_idx % 2) * 64
+            sk_pattern_idx = seq_idx // mods_per_pattern
+            row_offset = (seq_idx % mods_per_pattern) * 64
             
             for c in range(4):
                 pat_id = c * num_skode_patterns + sk_pattern_idx
@@ -390,7 +393,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                             print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands.")
                         pattern_text[(c, sk_pattern_idx)] += f"[{cmd_str}] x{abs_r}\n"
                     else:
-                        if not compress_blank or abs_r == 127:
+                        if not compress_blank or abs_r == s_last:
                             pattern_text[(c, sk_pattern_idx)] += f"[] x{abs_r}\n"""
             # out.write("\n")
             
@@ -412,9 +415,9 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         # Generate conductor track patterns
         for sk_idx in range(num_skode_patterns):
             pat_id = 4 * num_skode_patterns + sk_idx
-            pattern_text[(4, sk_idx)] = f"[ce {sk_idx}] x127\n"
+            pattern_text[(4, sk_idx)] = f"[ce {sk_idx}] x{s_last}\n"
             if sk_idx == num_skode_patterns - 1:
-                pattern_text[(4, sk_idx)] = "[ce 127] x127\n"
+                pattern_text[(4, sk_idx)] = f"[ce 127] x{s_last}\n"
                 
         pat_mapping = {}
         if dedupe:
@@ -452,7 +455,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             
         last_pats_5 = [str(pat_mapping[(c, num_skode_patterns - 1)]) for c in range(5)]
         if restart_pos < song_len:
-            target_p = restart_pos // 2
+            target_p = restart_pos // mods_per_pattern
             target_pats_5 = [str(pat_mapping[(c, target_p)]) for c in range(5)]
             loop_cmds = [f"y{p} z0" for p in last_pats_5] + [f"y{p} z1" for p in target_pats_5] + ["y127 z1"]
             out.write(f"[{' '.join(loop_cmds)}] e>127\n")
@@ -532,6 +535,7 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
     parser.add_argument("-x", "--extract", action="store_true", help="Extract samples to disk (creates samples/ dir)")
     parser.add_argument("-d", "--dedupe", action="store_true", help="Deduplicate Skode patterns (2-pass)")
+    parser.add_argument("--max-steps", type=int, default=0, help="Max steps per Skode pattern (0 = unlimited). Use 128 for older pulp versions.")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe)
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps)
 
