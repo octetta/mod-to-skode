@@ -2,7 +2,7 @@
 import math
 def vol_to_db(v):
     if v <= 0: return -60.0
-    return 20.0 * math.log10(v / 64.0)
+    return 20.0 * math.log10(v / 64.0) - 9.0
 
 import sys
 import struct
