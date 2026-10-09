@@ -2,7 +2,7 @@
 import math
 def vol_to_db(v):
     if v <= 0: return -60.0
-    return 20.0 * math.log10(v / 64.0) - 9.0
+    return 20.0 * math.log10(v / 64.0) - 18.0
 
 import sys
 import struct
@@ -106,8 +106,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write("# === INITIALIZATION ===\n")
         out.write("S0 S1 S2 S3 S4 S5 S6 S7\n")
         for c in range(4):
-            out.write(f"v{c} w0 m0 n60 l1 B1 p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0 a-9 f20000 F0 DD0 DT0 DS0 A0\n")
-            out.write(f"v{c+4} w0 m1 n60 l1 B1 t0,0,1,0 a-9 f20000 F0 DD0 DT0 DS0 A0\n")
+            out.write(f"v{c} w0 m0 n60 l1 B1 p{-0.6 if c in [0, 3] else 0.6} t0,0,1,0 s0 a-18 f20000 F0 DD0 DT0 DS0 A0\n")
+            out.write(f"v{c+4} w0 m1 n60 l1 B1 t0,0,1,0 a-18 f20000 F0 DD0 DT0 DS0 A0\n")
         out.write("\n")
         
         for inst in instruments:
