@@ -146,7 +146,7 @@ def unroll_mod_rows(patterns, sequence, restart_pos):
     return unrolled, seq_start_step, loop_target_step, loop_target_seq
 
 
-def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False, max_steps=0):
+def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False, max_steps=0, loop=False):
     with open(filename, 'rb') as f:
         data = f.read()
 
@@ -258,6 +258,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write(f"M {initial_tempo} 96\n\n")
         out.write("# === INITIALIZATION ===\n")
         out.write("S0 S1 S2 S3 S4 S5 S6 S7\n")
+        out.write("DL 1 0 0 0 0 15 10\n")
         for c in range(4):
             pan = -0.6 if c in (0, 3) else 0.6
             out.write(f"v{c} [ch {c+1}] vt w0 m0 n60 l1 B1 p{pan} t0,0,1,0 s0.002,1 g0.001,2 g0 fbp24 a-100 F0 A0\n")
@@ -283,12 +284,14 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             patterns, sequence, restart_pos
         )
         total_rows = len(unrolled_rows)
+        # Allocate 1 extra step at the end of the song for the natural end/fade trigger
+        total_steps = total_rows + 1
 
         if max_steps > 0:
             skode_steps = max(64, (max_steps // 64) * 64)
-            num_skode_patterns = max(1, math.ceil(total_rows / skode_steps))
+            num_skode_patterns = max(1, math.ceil(total_steps / skode_steps))
         else:
-            skode_steps = total_rows
+            skode_steps = total_steps
             num_skode_patterns = 1
 
         s_last = skode_steps - 1
@@ -328,7 +331,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         current_fb = [0.0, 0.0, 0.0, 0.0]
 
         pattern_text = {}
-        for c in range(4):
+        for c in range(5):
             for sk_idx in range(num_skode_patterns):
                 pattern_text[(c, sk_idx)] = ""
 
@@ -638,13 +641,21 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     elif not compress_blank:
                         pattern_text[(c, sk_pattern_idx)] += f"[] x{abs_r}\n"
 
-        # Generate conductor track patterns
-        for sk_idx in range(num_skode_patterns):
-            end_step = (total_rows - 1) % skode_steps if sk_idx == num_skode_patterns - 1 else s_last
-            if sk_idx == num_skode_patterns - 1:
-                pattern_text[(4, sk_idx)] = f"[ce 127] x{end_step}\n"
-            else:
-                pattern_text[(4, sk_idx)] = f"[ce {sk_idx}] x{end_step}\n"
+            # Conductor track (channel 4): sync speed changes and pattern transition control events
+            cond_cmds = []
+            if row_speed_cmd is not None and not is_pat_delay_repeat:
+                cond_cmds.append(f"z%{row_speed_cmd}")
+            if sk_pattern_idx < num_skode_patterns - 1 and abs_r == s_last:
+                cond_cmds.append(f"ce {sk_pattern_idx}")
+            if cond_cmds:
+                pattern_text[(4, sk_pattern_idx)] += f"[{' '.join(cond_cmds)}] x{abs_r}\n"
+
+        # Natural song end step: allow the final row to finish completely before firing ce 127
+        end_pat_idx = num_skode_patterns - 1
+        end_step = (total_steps - 1) % skode_steps
+        for c in range(4):
+            pattern_text[(c, end_pat_idx)] += f"[v{c}] x{end_step}\n"
+        pattern_text[(4, end_pat_idx)] += f"[ce 127] x{end_step}\n"
 
         pat_mapping = {}
         if dedupe:
@@ -681,7 +692,9 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             out.write(f"/cex {i},4,{i}\n")
 
         last_pats_5 = [str(pat_mapping[(c, num_skode_patterns - 1)]) for c in range(5)]
-        if loop_target_step is not None:
+        end_cmds = "Z0 v0 s1.5,1 a-100 v1 s1.5,1 a-100 v2 s1.5,1 a-100 v3 s1.5,1 a-100 +1.6 v0 l0 A v1 l0 A v2 l0 A v3 l0 A v4 a-100 l0 v5 a-100 l0 v6 a-100 l0 v7 a-100 l0"
+        stop_cmds = "Z0 v0 s1.0,1 a-100 v1 s1.0,1 a-100 v2 s1.0,1 a-100 v3 s1.0,1 a-100 +1.1 v0 l0 A v1 l0 A v2 l0 A v3 l0 A v4 a-100 l0 v5 a-100 l0 v6 a-100 l0 v7 a-100 l0"
+        if loop and loop_target_step is not None:
             target_p = loop_target_step // skode_steps
             target_step_in_p = loop_target_step % skode_steps
             target_pats_5 = [str(pat_mapping[(c, target_p)]) for c in range(5)]
@@ -693,20 +706,22 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     loop_cmds += [f"y{p} zg{target_step_in_p}" for p in target_pats_5]
             out.write(f"[{' '.join(loop_cmds)}] e>127\n")
         else:
-            stop_cmds = "Z0 O DQ v0 a-100 l0 v1 a-100 l0 v2 a-100 l0 v3 a-100 l0"
-            out.write(f"[{stop_cmds}] e>127\n")
+            out.write(f"[{end_cmds}] e>127\n")
         out.write("/cex 127,4,127\n\n/cer 1\n\n")
 
         # Macros
         out.write("# === MACROS ===\n")
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
-        play_cmds = [f"v{c} y{pat_mapping[(c, 0)]} z1" for c in range(4)] + [
+        play_cmds = [f"v{c} s0.002,1 l1 y{pat_mapping[(c, 0)]} z1" for c in range(4)] + [
             f"y{pat_mapping[(4, 0)]} z1",
             "y127 z1",
         ]
-        stop_cmds = "Z0 O DQ v0 a-100 l0 v1 a-100 l0 v2 a-100 l0 v3 a-100 l0"
+        efx_cmds = "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
         out.write(f"[play]: {' '.join(play_cmds)};\n")
-        out.write(f"[stop]: {stop_cmds};\n\n")
+        out.write(f"[stop]: {stop_cmds};\n")
+        out.write(f"[efx!]: {efx_cmds};\n\n")
+        nofx_cmds = "v0 p-.6 v1 p.6 v2 p-.6 v3 p.6";
+        out.write(f"[nofx]: {nofx_cmds};\n\n");
 
         # Info banner & credits
         out.write("# === INFO DISPLAY ON LOAD ===\n")
@@ -717,6 +732,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             out.write("[] puts\n")
         out.write(f"[play : {' '.join(play_cmds)}] puts\n")
         out.write(f"[stop : {stop_cmds}] puts\n")
+        out.write(f"[efx! : {efx_cmds}] puts\n")
+        out.write(f"[nofx : {nofx_cmds}] puts\n");
 
         if out_file:
             print(f"Generated {out_file}", file=sys.stderr)
@@ -794,7 +811,8 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
     parser.add_argument("-x", "--extract", action="store_true", help="Extract samples to disk (creates samples/ dir)")
     parser.add_argument("-d", "--dedupe", action="store_true", help="Deduplicate Skode patterns (2-pass)")
+    parser.add_argument("-l", "--loop", action="store_true", help="Loop song at end instead of stopping")
     parser.add_argument("--max-steps", type=int, default=0, help="Max steps per Skode pattern (0 = unlimited). Use 128 for older pulp versions.")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps)
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps, loop=args.loop)
 
