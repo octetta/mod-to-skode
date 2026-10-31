@@ -52,6 +52,14 @@ pub fn vol_to_db(v: Int) -> Float {
   }
 }
 
+pub fn format_cents(cents: Float) -> String {
+  let r = float.round(cents)
+  case float.absolute_value(cents -. int.to_float(r)) <. 0.0001 {
+    True -> int.to_string(r)
+    False -> format_float(cents, 1)
+  }
+}
+
 pub type UnrolledRow {
   UnrolledRow(
     seq_idx: Int,
@@ -686,18 +694,54 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
         "[nofx]: " <> nofx_cmds <> ";\n\n",
       ]
 
+      let raw_credits =
+        list.map(mod.instruments, fn(ins) {
+          let clean = string.trim(ins.name)
+          string.replace(clean, "[", "(") |> string.replace("]", ")")
+        })
+      let trimmed_start = list.drop_while(raw_credits, fn(s) { s == "" })
+      let trimmed =
+        list.reverse(trimmed_start)
+        |> list.drop_while(fn(s) { s == "" })
+        |> list.reverse
+      let #(_, collapsed) =
+        list.fold(trimmed, #(False, []), fn(acc, line) {
+          let #(prev_empty, res) = acc
+          case line == "" {
+            True -> {
+              case prev_empty {
+                True -> #(True, res)
+                False -> #(True, [line, ..res])
+              }
+            }
+            False -> #(False, [line, ..res])
+          }
+        })
+      let credits_lines =
+        list.reverse(collapsed)
+        |> list.map(fn(line) { "[" <> line <> "] puts\n" })
+
       let banner_clean = case string.trim(mod.title) {
         "" -> mod.filename
         t -> mod.filename <> " ('" <> t <> "')"
       }
       let banner_safe =
         string.replace(banner_clean, "[", "(") |> string.replace("]", ")")
-      let banner_defs = [
-        "# === INFO DISPLAY ON LOAD ===\n",
-        "[" <> banner_safe <> "] puts\n",
-        "[play : " <> play_cmds <> "] puts\n",
-        "[stop : " <> stop_cmds <> "] puts\n",
-      ]
+      let banner_defs =
+        list.flatten([
+          ["# === INFO DISPLAY ON LOAD ===\n", "[" <> banner_safe <> "] puts\n"],
+          credits_lines,
+          case credits_lines {
+            [] -> []
+            _ -> ["[] puts\n"]
+          },
+          [
+            "[play : " <> play_cmds <> "] puts\n",
+            "[stop : " <> stop_cmds <> "] puts\n",
+            "[efx! : " <> efx_cmds <> "] puts\n",
+            "[nofx : " <> nofx_cmds <> "] puts\n",
+          ],
+        ])
 
       let all_skode_parts =
         list.flatten([
@@ -802,15 +846,14 @@ fn generate_all_rows(
       let updated_pat_texts =
         list.fold(ch_cmds_list, pat_texts, fn(acc, item) {
           let #(c, cmd_str) = item
-          case cmd_str {
-            "" -> acc
-            _ -> {
-              let line =
-                "[" <> cmd_str <> "] x" <> int.to_string(global_idx) <> "\n"
-              let existing = dict.get(acc, c) |> result.unwrap("")
-              dict.insert(acc, c, existing <> line)
-            }
+          let actual_cmd = case cmd_str, rest_rows {
+            "", [] -> "v" <> int.to_string(c)
+            _, _ -> cmd_str
           }
+          let line =
+            "[" <> actual_cmd <> "] x" <> int.to_string(global_idx) <> "\n"
+          let existing = dict.get(acc, c) |> result.unwrap("")
+          dict.insert(acc, c, existing <> line)
         })
 
       let final_pat_texts = case cond_cmds {
@@ -984,14 +1027,14 @@ fn process_single_channel(
   let old_vol = ch.vol
 
   // Instrument lookup and assignment
-  let #(ch_inst, new_vol) = case note.inst > 0 {
+  let ch_inst = case note.inst > 0 {
     True -> {
       case dict.get(inst_map, note.inst) {
-        Ok(ins) -> #(ChannelState(..ch, current_inst_id: ins.id), ins.vol)
-        Error(_) -> #(ch, ch.vol)
+        Ok(ins) -> ChannelState(..ch, current_inst_id: ins.id, vol: ins.vol)
+        Error(_) -> ch
       }
     }
-    False -> #(ch, ch.vol)
+    False -> ch
   }
 
   // Portamento memory
@@ -1014,6 +1057,12 @@ fn process_single_channel(
   let ext_type = int.bitwise_shift_right(note.param, 4)
   let ext_val = int.bitwise_and(note.param, 0x0F)
 
+  let is_note_delay = note.effect == 0xE && ext_type == 0xD && ext_val > 0
+  let cmds = case is_note_delay {
+    True -> ["+-" <> int.to_string(ext_val), ..cmds]
+    False -> cmds
+  }
+
   // Tick 0 effects: volume and panning
   let #(ch_vol0, cmds) = case note.effect {
     0xC -> #(ChannelState(..ch_target, vol: int.clamp(note.param, 0, 64)), cmds)
@@ -1025,21 +1074,21 @@ fn process_single_channel(
     0xE if !is_delay -> {
       case ext_type {
         0xA -> #(
-          ChannelState(..ch_target, vol: int.min(64, new_vol + ext_val)),
+          ChannelState(..ch_target, vol: int.min(64, ch_target.vol + ext_val)),
           cmds,
         )
         0xB -> #(
-          ChannelState(..ch_target, vol: int.max(0, new_vol - ext_val)),
+          ChannelState(..ch_target, vol: int.max(0, ch_target.vol - ext_val)),
           cmds,
         )
         0x8 -> {
           let pan = { int.to_float(ext_val) /. 7.5 } -. 1.0
           #(ch_target, ["p" <> format_float(pan, 2), ..cmds])
         }
-        _ -> #(ChannelState(..ch_target, vol: new_vol), cmds)
+        _ -> #(ch_target, cmds)
       }
     }
-    _ -> #(ChannelState(..ch_target, vol: new_vol), cmds)
+    _ -> #(ch_target, cmds)
   }
 
   // Emit volume if changed
@@ -1066,7 +1115,7 @@ fn process_single_channel(
             False -> "B0"
           }
           let cents_cmds = case ins.cents != ch_vol0.cents {
-            True -> ["N0," <> float.to_string(ins.cents)]
+            True -> ["N0," <> format_cents(ins.cents)]
             False -> []
           }
           let updated =
@@ -1142,11 +1191,9 @@ fn process_single_channel(
       }
 
       // Note delay EDx
-      let #(cur_cursor, cmds) = case
-        note.effect == 0xE && ext_type == 0xD && ext_val > 0
-      {
-        True -> #(ext_val, ["+-" <> int.to_string(ext_val), ..cmds])
-        False -> #(0, cmds)
+      let cur_cursor = case is_note_delay {
+        True -> ext_val
+        False -> 0
       }
 
       // Clear bend
@@ -1156,7 +1203,20 @@ fn process_single_channel(
       }
 
       // Format note trigger
-      let note_cmd = "n" <> int.to_string(midi_n)
+      let periods_dict = dict.from_list(mod_parser.periods_table)
+      let is_exact = dict.has_key(periods_dict, note.period)
+      let note_cmd = case is_exact {
+        True -> "n" <> int.to_string(midi_n)
+        False -> {
+          let exact_midi = mod_parser.period_to_midi(note.period)
+          let note_cents = { exact_midi -. int.to_float(midi_n) } *. 100.0
+          case float.absolute_value(note_cents) >=. 1.0 {
+            True ->
+              "n" <> int.to_string(midi_n) <> "," <> format_float(note_cents, 0)
+            False -> "n" <> int.to_string(midi_n)
+          }
+        }
+      }
       #(ch_fb0, cur_cursor, [note_cmd <> " l1", ..cmds])
     }
     _, _ -> #(ch_wave, 0, cmds)
@@ -1228,31 +1288,34 @@ fn process_single_channel(
     True -> {
       case ch_cut.vib_active {
         True -> {
-          let fb_cmds = case
+          let #(ch_vib, cmds) = case
             float.absolute_value(ch_cut.current_fb -. base_fb) >=. 0.0005
           {
-            True -> ["fb" <> format_float(base_fb, 3)]
-            False -> []
+            True -> {
+              let fb_cmd = case float.absolute_value(base_fb) >=. 0.0005 {
+                True -> "fb" <> format_float(base_fb, 3)
+                False -> "fb0"
+              }
+              #(ChannelState(..ch_cut, current_fb: base_fb), [fb_cmd, ..cmds])
+            }
+            False -> #(ch_cut, cmds)
           }
-          #(
-            ChannelState(..ch_cut, vib_active: False, current_fb: base_fb),
-            list.flatten([fb_cmds, cmds]),
-          )
+          #(ChannelState(..ch_vib, vib_active: False), cmds)
         }
         False -> #(ch_cut, cmds)
       }
     }
     False -> {
-      let fb_cmds = case
-        float.absolute_value(ch_cut.current_fb -. base_fb) >=. 0.0005
-      {
-        True -> ["fb" <> format_float(base_fb, 3)]
-        False -> []
+      case float.absolute_value(ch_cut.current_fb -. base_fb) >=. 0.0005 {
+        True -> {
+          let fb_cmd = case float.absolute_value(base_fb) >=. 0.0005 {
+            True -> "fb" <> format_float(base_fb, 3)
+            False -> "fb0"
+          }
+          #(ChannelState(..ch_cut, current_fb: base_fb), [fb_cmd, ..cmds])
+        }
+        False -> #(ch_cut, cmds)
       }
-      #(
-        ChannelState(..ch_cut, current_fb: base_fb),
-        list.flatten([fb_cmds, cmds]),
-      )
     }
   }
 
@@ -1266,7 +1329,7 @@ fn process_single_channel(
 
   // Update vibrato / tremolo speeds and depths
   let ch_lfo_params = case note.effect {
-    0x4 if note.param > 0 -> {
+    0x4 -> {
       let x = int.bitwise_shift_right(note.param, 4)
       let y = int.bitwise_and(note.param, 0x0F)
       ChannelState(
@@ -1385,7 +1448,7 @@ fn process_single_channel(
 
   // Simulate ticks 1..cur_speed-1
   let sine_dict = dict.from_list(list.index_map(pt_sine, fn(v, i) { #(i, v) }))
-  let tick_records =
+  let #(tick_records, ch_after_ticks) =
     simulate_ticks(
       1,
       cur_speed,
@@ -1410,7 +1473,7 @@ fn process_single_channel(
     )
 
   let full_cmds = list.flatten([list.reverse(cmds), cand_cmds])
-  let final_ch = ChannelState(..ch_vol_slide, current_fb: final_fb)
+  let final_ch = ChannelState(..ch_after_ticks, current_fb: final_fb)
 
   #(final_ch, string.join(full_cmds, " "))
 }
@@ -1423,9 +1486,9 @@ fn simulate_ticks(
   retrig_interval: Int,
   sine_dict: Dict(Int, Int),
   acc: List(TickRecord),
-) -> List(TickRecord) {
+) -> #(List(TickRecord), ChannelState) {
   case t >= speed {
-    True -> list.reverse(acc)
+    True -> #(list.reverse(acc), ch)
     False -> {
       let is_retrig = retrig_interval > 0 && t % retrig_interval == 0
 
@@ -1588,7 +1651,17 @@ fn decimate_loop(
 
       let #(cand_cmds, cand_fb) =
         synth_ticks(sel, init_fb, init_vol, cursor, retrig_cmd)
-      let total_words = list.length(base_cmds) + list.length(cand_cmds)
+      let cand_words =
+        list.fold(cand_cmds, 0, fn(acc, c) {
+          acc
+          + list.length(list.filter(string.split(c, " "), fn(w) { w != "" }))
+        })
+      let base_words =
+        list.fold(base_cmds, 0, fn(acc, c) {
+          acc
+          + list.length(list.filter(string.split(c, " "), fn(w) { w != "" }))
+        })
+      let total_words = base_words + cand_words
       let defer_count =
         list.count(cand_cmds, fn(c) { string.contains(c, "+-") })
 

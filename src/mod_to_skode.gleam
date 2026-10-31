@@ -492,6 +492,26 @@ fn view_drop_zone(model: Model) -> Element(Msg) {
         ),
       ]),
     ]),
+    html.div([class("developer-embed-card")], [
+      html.div([class("developer-card-header")], [
+        html.div([class("developer-badge")], [text("DEVELOPER GUIDE")]),
+        html.h3([class("developer-title")], [
+          text("Embed Skred & Converted Modules in Your Web App"),
+        ]),
+        html.p([class("developer-subtitle")], [
+          text(
+            "Every converted .mod file produces a standalone .zip (main.sk + 16-bit WAVs). You can embed the Skred WebAssembly engine into your own games, web apps, or creative sites with just a few lines of code:",
+          ),
+        ]),
+      ]),
+      html.pre([class("developer-code-preview")], [
+        html.code([], [
+          text(
+            "// 1. Include coi-serviceworker.js and vendor/skred/skred_api.js\n// 2. Fetch the generated .zip and write to Emscripten VFS:\nModule.FS.writeFile('/song.zip', new Uint8Array(await zipResponse.arrayBuffer()));\n// 3. Mount and trigger playback:\nModule.ccall('skred_command', 'number', ['string'], ['%z /song.zip; [main.sk] /ls; play']);",
+          ),
+        ]),
+      ]),
+    ]),
     html.div([class("features-grid")], [
       feature_card(
         "⚡ 100% Client-Side",
@@ -592,6 +612,7 @@ fn view_tabs_navigation(model: Model) -> Element(Msg) {
     tab_button("info", "Instruments & Samples", model.active_tab),
     tab_button("skode", "Generated Skode (main.sk)", model.active_tab),
     tab_button("samples", "WAV Sample Blobs", model.active_tab),
+    tab_button("embed", "Embed in Your Page 🛠️", model.active_tab),
   ])
 }
 
@@ -618,8 +639,98 @@ fn view_tab_content(model: Model, mod_file: ModFile) -> Element(Msg) {
     "info" -> view_instruments_table(mod_file.instruments)
     "skode" -> view_skode_code(model.conversion)
     "samples" -> view_samples_list(model.conversion)
+    "embed" -> view_embed_guide(model, mod_file)
     _ -> view_instruments_table(mod_file.instruments)
   }
+}
+
+fn view_embed_guide(_model: Model, mod_file: ModFile) -> Element(Msg) {
+  let zip_name = clean_zip_name(mod_file.filename)
+  html.div([class("embed-guide-container")], [
+    html.div([class("embed-header-card")], [
+      html.h3([class("embed-title")], [
+        text("Embed " <> zip_name <> " in Your Web Application"),
+      ]),
+      html.p([class("embed-desc")], [
+        text(
+          "Follow these three steps to integrate the Skred v0.80.0 audio engine and play this converted module on your own website.",
+        ),
+      ]),
+    ]),
+    embed_step_card(
+      "1. Assets & Project Files",
+      "Save the converted ZIP archive and include the vendored Skred WebAssembly runtime files:",
+      [
+        html.ul([class("embed-steps-list")], [
+          html.li([], [
+            text("Download the converted archive as "),
+            html.code([class("inline-code")], [text(zip_name)]),
+            text(" (using the 'Download .ZIP' button in the toolbar above)."),
+          ]),
+          html.li([], [
+            text("Copy "),
+            html.code([class("inline-code")], [
+              text("vendor/skred/skred_api.js"),
+            ]),
+            text(" and "),
+            html.code([class("inline-code")], [
+              text("vendor/skred/skred_api.wasm"),
+            ]),
+            text(" into your web app directory."),
+          ]),
+          html.li([], [
+            text("Include "),
+            html.code([class("inline-code")], [text("coi-serviceworker.js")]),
+            text(
+              " to enable SharedArrayBuffer multi-threading without requiring specialized server headers.",
+            ),
+          ]),
+        ]),
+      ],
+    ),
+    embed_step_card(
+      "2. HTML Header Setup",
+      "Include the coi-serviceworker and configure window.Module.locateFile before loading skred_api.js:",
+      [
+        html.pre([class("code-block")], [
+          html.code([], [
+            text(
+              "<!-- 1. Enable SharedArrayBuffer isolation via Service Worker -->\n<script src=\"coi-serviceworker.js\"></script>\n\n<!-- 2. Configure Emscripten Module locateFile -->\n<script>\n  window.Module = {\n    locateFile: (path) => `./vendor/skred/${path}`,\n    print: (msg) => console.log('[Skred]', msg),\n    printErr: (msg) => console.error('[Skred ERR]', msg),\n  };\n</script>\n\n<!-- 3. Load Skred WebAssembly Audio Engine -->\n<script src=\"vendor/skred/skred_api.js\"></script>",
+            ),
+          ]),
+        ]),
+      ],
+    ),
+    embed_step_card(
+      "3. JavaScript Playback Controller",
+      "Unlock audio on first user gesture, mount the ZIP into the virtual filesystem, and trigger playback:",
+      [
+        html.pre([class("code-block")], [
+          html.code([], [
+            text(
+              "// Start Audio on User Interaction (Click or Tap)\ndocument.getElementById('play-btn').addEventListener('click', async () => {\n  const M = window.Module;\n  \n  // Resume Web Audio Context if suspended\n  if (M.audioContext && M.audioContext.state === 'suspended') {\n    await M.audioContext.resume();\n  }\n  \n  // Start hardware audio device (128 buffer size, 256 voices)\n  if (typeof M._skred_start === 'function') {\n    M._skred_enumerate_devices?.(0);\n    M._skred_audio_select?.(0, 0);\n    M._skred_audio_select?.(1, -2);\n    M._skred_start(128, 256, -1);\n  }\n  \n  // Fetch and mount "
+              <> zip_name
+              <> " into Skred Virtual File System\n  const res = await fetch('./"
+              <> zip_name
+              <> "');\n  const zipBuf = await res.arrayBuffer();\n  M.FS.writeFile('/song.zip', new Uint8Array(zipBuf));\n  \n  // Mount zip via Skode VFS (%z) and load script\n  M.ccall('skred_command', 'number', ['string'], ['%z /song.zip']);\n  M.ccall('skred_command', 'number', ['string'], ['[main.sk] /ls']);\n  M.ccall('skred_command', 'number', ['string'], ['play']);\n});\n\n// Stop and silence audio\ndocument.getElementById('stop-btn').addEventListener('click', () => {\n  const M = window.Module;\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Panic: silence all voices\n});",
+            ),
+          ]),
+        ]),
+      ],
+    ),
+  ])
+}
+
+fn embed_step_card(
+  title: String,
+  desc: String,
+  children: List(Element(Msg)),
+) -> Element(Msg) {
+  html.div([class("embed-step-card")], [
+    html.h4([class("embed-step-title")], [text(title)]),
+    html.p([class("embed-step-desc")], [text(desc)]),
+    html.div([class("embed-step-body")], children),
+  ])
 }
 
 fn view_instruments_table(instruments: List(Instrument)) -> Element(Msg) {

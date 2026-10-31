@@ -21,6 +21,7 @@ Available both as a **100% client-side web application** with in-browser WASM pl
   - [Sample Extraction & 16-bit WAV Conversion](#sample-extraction--16-bit-wav-conversion)
 - [Supported Tracker Effects](#supported-tracker-effects)
 - [Public MOD Music Sources](#public-mod-music-sources)
+- [Embedding Skred in Your Web Application](#embedding-skred-in-your-web-application)
 - [Development & Makefile](#development--makefile)
   - [Prerequisites](#prerequisites)
   - [Makefile Targets](#makefile-targets)
@@ -166,6 +167,91 @@ Looking for classic Amiga MOD files to convert and play? Explore these public ar
 - **[The Mod Archive](https://modarchive.org/)**: The premier repository of tracker music on the web. Over 100,000 modules spanning ProTracker, FastTracker, ScreamTracker, and Impulse Tracker, with searchable charts and community ratings.
 - **[Amiga Music Preservation (AMP)](https://amp.dhs.nu/)**: The most comprehensive and historically accurate Commodore Amiga music preservation database, cataloging game soundtracks, demoscene productions, and disk magazines.
 - **[Aminet MOD Collection](https://aminet.net/mods)**: The historic Commodore Amiga software and music repository active since 1992, hosting thousands of original `.mod` archives.
+
+---
+
+## Embedding Skred in Your Web Application
+
+Developers can embed the Skred WebAssembly audio engine into any webpage, web game, creative coding demo, or portfolio to play generated `.zip` packages natively client-side.
+
+### 1. Copy Runtime Files
+
+Copy the following files into your web project:
+- `vendor/skred/skred_api.js` (vendored Emscripten glue runtime)
+- `vendor/skred/skred_api.wasm` (Skred v0.80.0 multi-threaded synthesizer core)
+- `coi-serviceworker.js` (provides Cross-Origin Isolation for `SharedArrayBuffer` on GitHub Pages or static hosts without server-side header access)
+
+### 2. Include in HTML
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Skred Player Demo</title>
+  <!-- 1. Enable SharedArrayBuffer isolation via Service Worker -->
+  <script src="coi-serviceworker.js"></script>
+
+  <!-- 2. Configure Emscripten Module locateFile -->
+  <script>
+    window.Module = {
+      locateFile: (path) => `./vendor/skred/${path}`,
+      print: (text) => console.log('[Skred]', text),
+      printErr: (text) => console.error('[Skred ERR]', text),
+    };
+  </script>
+
+  <!-- 3. Load Skred WebAssembly Engine -->
+  <script src="vendor/skred/skred_api.js"></script>
+</head>
+<body>
+  <button id="play-btn">▶ Play</button>
+  <button id="stop-btn">⏹ Stop</button>
+
+  <script src="player.js"></script>
+</body>
+</html>
+```
+
+### 3. Mount and Play the Converted ZIP (`player.js`)
+
+```javascript
+document.getElementById('play-btn').addEventListener('click', async () => {
+  const M = window.Module;
+  if (!M) return;
+
+  // Web Audio Context unlock on user gesture
+  if (M.audioContext && M.audioContext.state === 'suspended') {
+    await M.audioContext.resume();
+  }
+
+  // Initialize hardware audio device (128 buffer size for <3ms latency, 256 voices)
+  if (typeof M._skred_start === 'function') {
+    M._skred_enumerate_devices?.(0);
+    M._skred_audio_select?.(0, 0);
+    M._skred_audio_select?.(1, -2);
+    M._skred_start(128, 256, -1);
+  }
+
+  // Fetch the generated .zip and write to Emscripten Virtual File System
+  const response = await fetch('./space_debris.zip');
+  const zipBuffer = await response.arrayBuffer();
+  M.FS.writeFile('/song.zip', new Uint8Array(zipBuffer));
+
+  // Mount zip via Skode VFS (%z), load main.sk, and play
+  M.ccall('skred_command', 'number', ['string'], ['%z /song.zip']);
+  M.ccall('skred_command', 'number', ['string'], ['[main.sk] /ls']);
+  M.ccall('skred_command', 'number', ['string'], ['play']);
+});
+
+// Stop and silence all voices
+document.getElementById('stop-btn').addEventListener('click', () => {
+  const M = window.Module;
+  if (!M) return;
+  M.ccall('skred_command', 'number', ['string'], ['stop']);
+  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Silences all active voices
+});
+```
 
 ---
 
