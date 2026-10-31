@@ -5,3 +5,17 @@ __pycache__/*
 samples/*
 mini-skred
 mini-skred-history.txt
+
+# Gleam build outputs
+/build
+/dev
+/erl_crash.dump
+
+# Node / Vite
+/node_modules
+/dist
+
+# Temporary files
+*.swp
+*~
+.DS_Store

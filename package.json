@@ -1,0 +1,21 @@
+{
+  "name": "mod-to-skode",
+  "version": "0.1.0",
+  "type": "module",
+  "imports": {
+    "#vendor/*": "./vendor/*"
+  },
+  "scripts": {
+    "build:gleam": "gleam build --target javascript",
+    "build": "gleam build --target javascript && vite build",
+    "dev": "gleam build --target javascript && vite",
+    "preview": "vite preview",
+    "test": "gleam test --target javascript"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  },
+  "dependencies": {
+    "coi-serviceworker": "^0.1.7"
+  }
+}

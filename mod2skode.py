@@ -14,11 +14,15 @@ def vol_to_db(v):
     return 20.0 * math.log10(v / 64.0) - 10.0
 
 
-PERIODS = {
-    856: 45, 808: 46, 762: 47, 720: 48, 678: 49, 640: 50, 604: 51, 570: 52, 538: 53, 508: 54, 480: 55, 453: 56,
-    428: 57, 404: 58, 381: 59, 360: 60, 339: 61, 320: 62, 302: 63, 285: 64, 269: 65, 254: 66, 240: 67, 226: 68,
-    214: 69, 202: 70, 190: 71, 180: 72, 170: 73, 160: 74, 151: 75, 143: 76, 135: 77, 127: 78, 120: 79, 113: 80,
-}
+# 7-octave ProTracker / FastTracker II period table (octaves -1 through 5, MIDI 21 to 104)
+PERIODS = {}
+_BASE_PERIODS = [
+    (856, 45), (808, 46), (762, 47), (720, 48), (678, 49), (640, 50),
+    (604, 51), (570, 52), (538, 53), (508, 54), (480, 55), (453, 56),
+]
+for _oct_mult, _oct_shift in [(4.0, -24), (2.0, -12), (1.0, 0), (0.5, 12), (0.25, 24), (0.125, 36), (0.0625, 48)]:
+    for _base_p, _base_n in _BASE_PERIODS:
+        PERIODS[int(round(_base_p * _oct_mult))] = _base_n + _oct_shift
 
 PROTRACKER_SINE_TABLE = [
     0, 24, 49, 74, 97, 120, 141, 161,
@@ -40,6 +44,20 @@ def period_to_midi(p):
         return 0.0
     return 57.0 + 12.0 * math.log2(428.0 / p)
 
+
+MAGIC_CHANNELS = {
+    'M.K.': 4, 'M!K!': 4, 'FLT4': 4, '4CHN': 4,
+    '6CHN': 6, '8CHN': 8, 'OCTA': 8, 'OKTA': 8, 'CD81': 8, 'FLT8': 8,
+}
+
+def channels_from_magic(magic):
+    if magic in MAGIC_CHANNELS:
+        return MAGIC_CHANNELS[magic]
+    if len(magic) == 4 and magic[0].isdigit() and magic[1:] == 'CHN':
+        return int(magic[0])
+    if len(magic) == 4 and magic[:2].isdigit() and magic[2:] == 'CH':
+        return int(magic[:2])
+    return 4
 
 def closest_period(p):
     return min(PERIODS.keys(), key=lambda k: abs(k - p)) if p > 0 else 0
@@ -73,8 +91,9 @@ def unroll_mod_rows(patterns, sequence, restart_pos):
 
         r = next_start_row
         next_start_row = 0
-        loop_start_r = [0, 0, 0, 0]
-        loop_count = [0, 0, 0, 0]
+        nch = len(pattern[0])
+        loop_start_r = [0] * nch
+        loop_count = [0] * nch
         jumped = False
 
         while 0 <= r < 64:
@@ -86,7 +105,7 @@ def unroll_mod_rows(patterns, sequence, restart_pos):
             pat_delay = 0
             e6_loop_target = None
 
-            for c in range(4):
+            for c in range(nch):
                 _, _, eff, param, _ = row[c]
                 if eff == 0xB:
                     pos_jump = param
@@ -146,7 +165,7 @@ def unroll_mod_rows(patterns, sequence, restart_pos):
     return unrolled, seq_start_step, loop_target_step, loop_target_seq
 
 
-def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False, max_steps=0, loop=False):
+def convert_mod(filename, out_file=None, compress_blank=False, extract=False, dedupe=False, max_steps=0, loop=False, max_channels=0):
     with open(filename, 'rb') as f:
         data = f.read()
 
@@ -208,26 +227,50 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
     restart_pos = data[offset+1]
     offset += 2
     sequence = list(data[offset:offset+128][:song_len])
+    all_order = list(data[offset:offset+128])
     offset += 128
     magic = data[offset:offset+4].decode('ascii', errors='ignore')
     offset += 4
 
-    num_patterns = max(sequence) + 1 if sequence else 0
+    nch_file = channels_from_magic(magic)
+    nch = min(nch_file, max_channels) if max_channels > 0 else nch_file
+    if nch_file != 4 or nch != nch_file:
+        print(f"Note: {magic!r} -> {nch_file} channels in file, converting {nch} (needs {nch * 2} Skred voices incl. shadow LFO voices)", file=sys.stderr)
+
+    # Pattern count is the highest pattern number anywhere in the 128-entry order
+    # table, not just within song_len: unused trailing patterns still occupy file
+    # space and shift the sample data offset.
+    n_seq = max(sequence) + 1 if sequence else 0
+    n_full = max(all_order) + 1 if all_order else 0
+    num_patterns = n_full if offset + n_full * 64 * 4 * nch_file <= len(data) else n_seq
+    if num_patterns != n_seq:
+        print(f"Note: order table references {n_full} patterns, song uses {n_seq}; reading {num_patterns}", file=sys.stderr)
 
     patterns = []
     for p in range(num_patterns):
         pattern = []
         for r in range(64):
             row = []
-            for c in range(4):
+            for c in range(nch_file):
                 b = data[offset:offset+4]
                 offset += 4
                 inst = (b[0] & 0xF0) | ((b[2] & 0xF0) >> 4)
                 period = ((b[0] & 0x0F) << 8) | b[1]
                 effect = b[2] & 0x0F
                 param = b[3]
-                midi_note = PERIODS.get(closest_period(period)) if period > 0 else None
-                row.append((midi_note, inst, effect, param, period))
+                if period > 0:
+                    if period in PERIODS:
+                        midi_note = PERIODS[period]
+                    else:
+                        cp = closest_period(period)
+                        if cp > 0 and abs(period_to_midi(period) - period_to_midi(cp)) < 0.6:
+                            midi_note = PERIODS[cp]
+                        else:
+                            midi_note = max(1, min(127, int(round(period_to_midi(period)))))
+                else:
+                    midi_note = None
+                if c < nch:
+                    row.append((midi_note, inst, effect, param, period))
             pattern.append(row)
         patterns.append(pattern)
 
@@ -246,7 +289,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         initial_speed = 6
         initial_tempo = 125
         if patterns and sequence:
-            for c in range(4):
+            for c in range(nch):
                 _, _, eff, param, _ = patterns[sequence[0]][0][c]
                 if eff == 0xF and param > 0:
                     if param < 32:
@@ -257,12 +300,12 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         # Subdivision 96 means 1 master clock tick = 1 ProTracker tick (24 ticks/beat * 4 beats/measure)
         out.write(f"M {initial_tempo} 96\n\n")
         out.write("# === INITIALIZATION ===\n")
-        out.write("S0 S1 S2 S3 S4 S5 S6 S7\n")
+        out.write(" ".join(f"S{i}" for i in range(nch * 2)) + "\n")
         out.write("DL 1 0 0 0 0 15 10\n")
-        for c in range(4):
-            pan = -0.6 if c in (0, 3) else 0.6
+        for c in range(nch):
+            pan = -0.6 if c % 4 in (0, 3) else 0.6
             out.write(f"v{c} [ch {c+1}] vt w0 m0 n60 l1 B1 p{pan} t0,0,1,0 s0.002,1 g0.001,2 g0 fbp24 a-100 F0 A0\n")
-            out.write(f"v{c+4} [lfo {c+1}] vt w0 m1 n60 l1 B1 t0,0,1,0 a-10 f20000 F0 A0\n")
+            out.write(f"v{c+nch} [lfo {c+1}] vt w0 m1 n60 l1 B1 t0,0,1,0 a-10 f20000 F0 A0\n")
         out.write("\n")
 
         inst_by_id = {ins['id']: ins for ins in instruments}
@@ -297,7 +340,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         s_last = skode_steps - 1
 
         for i in range(num_skode_patterns):
-            for c in range(5):
+            for c in range(nch + 1):
                 pat_id = c * num_skode_patterns + i
                 out.write(f"y{pat_id} %{initial_speed}\n")
 
@@ -307,31 +350,32 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         out.write("# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n")
         out.write(f"y127 %{initial_speed} [v0] x{s_last} yp127\n\n")
 
-        current_vol = [64, 64, 64, 64]
+        current_vol = [64] * nch
         current_speed = initial_speed
-        current_note = [0, 0, 0, 0]
-        current_cents = [0.0, 0.0, 0.0, 0.0]
-        current_period = [0, 0, 0, 0]
-        target_period = [0, 0, 0, 0]
-        portamento_speed = [0, 0, 0, 0]
-        vib_speed = [0, 0, 0, 0]
-        vol_slide_speed = [0, 0, 0, 0]
-        vib_depth = [0, 0, 0, 0]
-        vib_active = [False, False, False, False]
-        vib_applied = [0, 0, 0, 0]
-        trem_active = [False, False, False, False]
-        trem_applied = [(0, 0), (0, 0), (0, 0), (0, 0)]
-        trem_speed = [0, 0, 0, 0]
-        trem_depth = [0, 0, 0, 0]
-        current_loop = [None, None, None, None]
-        current_wave = [None, None, None, None]
-        current_inst = [None, None, None, None]
-        sample_offset_mem = [0, 0, 0, 0]
-        active_vs_offset = [0, 0, 0, 0]
-        current_fb = [0.0, 0.0, 0.0, 0.0]
+        current_tempo = initial_tempo
+        current_note = [0] * nch
+        current_cents = [0.0] * nch
+        current_period = [0] * nch
+        target_period = [0] * nch
+        portamento_speed = [0] * nch
+        vib_speed = [0] * nch
+        vol_slide_speed = [0] * nch
+        vib_depth = [0] * nch
+        vib_active = [False] * nch
+        vib_applied = [0] * nch
+        trem_active = [False] * nch
+        trem_applied = [(0, 0)] * nch
+        trem_speed = [0] * nch
+        trem_depth = [0] * nch
+        current_loop = [None] * nch
+        current_wave = [None] * nch
+        current_inst = [None] * nch
+        sample_offset_mem = [0] * nch
+        active_vs_offset = [0] * nch
+        current_fb = [0.0] * nch
 
         pattern_text = {}
-        for c in range(5):
+        for c in range(nch + 1):
             for sk_idx in range(num_skode_patterns):
                 pattern_text[(c, sk_idx)] = ""
 
@@ -341,7 +385,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
             row_speed_cmd = None
             row_tempo_cmd = None
-            for scan_c in range(4):
+            for scan_c in range(nch):
                 _, _, s_eff, s_param, _ = row[scan_c]
                 if s_eff == 0xF and s_param > 0:
                     if s_param < 32:
@@ -352,8 +396,10 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
             if row_speed_cmd is not None:
                 current_speed = row_speed_cmd
+            if row_tempo_cmd is not None:
+                current_tempo = row_tempo_cmd
 
-            for c in range(4):
+            for c in range(nch):
                 note, inst, effect, param, period = row[c]
                 if is_pat_delay_repeat:
                     note = None
@@ -391,6 +437,9 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
                 if effect == 0xC:
                     current_vol[c] = max(0, min(64, param))
+                elif effect == 0x8:  # 8xx Set Panning (0..255 -> -1.0..1.0)
+                    pan_val = max(-1.0, min(1.0, (param - 128.0) / 128.0))
+                    cmds.append(f"p{pan_val:.2f}")
                 elif effect == 0xE and not is_pat_delay_repeat:
                     if ext_type == 0xA:  # EAx Fine Volume Slide Up
                         current_vol[c] = min(64, current_vol[c] + ext_val)
@@ -400,6 +449,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                         pan_val = (ext_val / 7.5) - 1.0
                         cmds.append(f"p{pan_val:.2f}")
 
+                defer_idx = len(cmds)  # EDx: everything from here up to the note is deferred together
                 if current_vol[c] != old_vol or (note is not None and effect not in (0x3, 0x5)):
                     cmds.append(f"a{vol_to_db(current_vol[c]):.2f}")
 
@@ -452,7 +502,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     note_prefix = ""
                     tick_cursor = 0
                     if effect == 0xE and ext_type == 0xD and ext_val > 0:  # EDx Note Delay
-                        note_prefix = f"+-{ext_val} "
+                        cmds.insert(defer_idx, f"+-{ext_val}")
                         tick_cursor = ext_val
 
                     if current_fb[c] != 0.0:
@@ -474,12 +524,12 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                 # E1x / E2x Fine Portamento (happens once on Tick 0)
                 if effect == 0xE and ext_type in (0x1, 0x2) and ext_val > 0 and current_period[c] > 0 and not is_pat_delay_repeat:
                     if ext_type == 0x1:
-                        current_period[c] = max(113, current_period[c] - ext_val)
+                        current_period[c] = max(28, current_period[c] - ext_val)
                     else:
-                        current_period[c] = min(856, current_period[c] + ext_val)
+                        current_period[c] = min(3424, current_period[c] + ext_val)
                     bend_semitones = period_to_midi(current_period[c]) - current_note[c]
                     fb_val = max(-1.0, min(1.0, bend_semitones / 24.0))
-                    cmds.append(f"fb{fb_val:.3f}")
+                    cmds.append(f"fb{fb_val:.3f}" if abs(fb_val) >= 0.0005 else "fb0")
                     current_fb[c] = fb_val
 
                 # ECx Note Cut at tick x
@@ -541,12 +591,20 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                         vib_active[c] = True
 
                     if effect == 0x7:
-                        cur_trem = (trem_speed[c], trem_depth[c])
+                        cur_trem = (trem_speed[c], trem_depth[c], current_tempo, current_vol[c])
                         if not trem_active[c] or trem_applied[c] != cur_trem:
-                            rate_hz = trem_speed[c] * 0.78
-                            d = trem_depth[c] * 0.025
-                            o = 1.0 - d
-                            cmds.append(f"v{c+4} f{rate_hz:.2f} v{c} A{c+4},{d:.3f},{o:.3f}")
+                            # PT: position advances `speed` per tick on a 64-entry table; tick rate = bpm*2/5 Hz
+                            rate_hz = trem_speed[c] * current_tempo / 160.0
+                            # PT: swing is (sine[0..255] * depth) >> 6 in *volume units*, clamped to 0..64,
+                            # so relative depth depends on the current volume.
+                            # ASSUMES A<lfo>,d,o means amp = o + d * lfo with lfo in -1..1 -- verify.
+                            v_ = max(1, current_vol[c])
+                            delta = 255.0 * trem_depth[c] / 64.0
+                            lo = max(0.0, (v_ - delta) / v_)
+                            hi = min(64.0 / v_, (v_ + delta) / v_)
+                            d = (hi - lo) / 2.0
+                            o = (hi + lo) / 2.0
+                            cmds.append(f"v{c+nch} f{rate_hz:.2f} v{c} A{c+nch},{d:.3f},{o:.3f}")
                             trem_active[c] = True
                             trem_applied[c] = cur_trem
 
@@ -559,81 +617,153 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
                 arp_x = (param >> 4) if (effect == 0x0 and param > 0) else 0
                 arp_y = (param & 0x0F) if (effect == 0x0 and param > 0) else 0
-                retrig_interval = ext_val if (effect == 0xE and ext_type == 0x9 and ext_val > 0 and note is not None and effect not in (0x3, 0x5)) else 0
+                retrig_interval = ext_val if (effect == 0xE and ext_type == 0x9 and ext_val > 0) else 0
+                retrig_cmd = None
+                if retrig_interval > 0:
+                    if note is not None:
+                        retrig_cmd = note_cmd
+                    elif current_note[c] > 0:
+                        retrig_cmd = f"n{current_note[c]}"  # fb already carries any bend
+                    else:
+                        retrig_interval = 0
 
+                # Simulate state tick-by-tick across ticks 1..current_speed-1
+                tick_records = []
                 for t in range(1, current_speed):
-                    tick_ops = []
-
                     # Retrigger (E9x)
-                    if retrig_interval > 0 and (t % retrig_interval) == 0:
-                        tick_ops.append(f"{note_cmd} l1")
+                    is_retrig = (retrig_interval > 0 and (t % retrig_interval) == 0)
 
                     # Portamento (0x1, 0x2, 0x3, 0x5)
                     if effect in (0x1, 0x2, 0x3, 0x5):
                         speed = portamento_speed[c]
                         if speed > 0 and current_period[c] > 0:
-                            prev_period = current_period[c]
                             if effect == 0x1:  # Slide up (period decreases)
-                                current_period[c] = max(113, current_period[c] - speed)
+                                current_period[c] = max(28, current_period[c] - speed)
                             elif effect == 0x2:  # Slide down (period increases)
-                                current_period[c] = min(856, current_period[c] + speed)
+                                current_period[c] = min(3424, current_period[c] + speed)
                             elif effect in (0x3, 0x5) and target_period[c] > 0:  # Slide to target note
                                 if current_period[c] < target_period[c]:
                                     current_period[c] = min(target_period[c], current_period[c] + speed)
                                 elif current_period[c] > target_period[c]:
                                     current_period[c] = max(target_period[c], current_period[c] - speed)
 
-                            if current_period[c] != prev_period:
-                                current_f_midi = period_to_midi(current_period[c])
-                                bend_semitones = current_f_midi - current_note[c]
-                                fb_val = max(-1.0, min(1.0, bend_semitones / 24.0))
-                                tick_ops.append(f"fb{fb_val:.3f}")
-                                current_fb[c] = fb_val
-
                     # Vibrato (0x4, 0x6) - ProTracker 32-entry sine table on ticks 1..speed-1
+                    mod_period = current_period[c]
                     if effect in (0x4, 0x6) and current_period[c] > 0:
                         vib_pos = vib_applied[c] & 63
                         vib_sin = PROTRACKER_SINE_TABLE[vib_pos & 31]
                         delta_period = (vib_sin * vib_depth[c]) // 128
                         if vib_pos >= 32:
                             delta_period = -delta_period
-                        mod_period = max(113, min(856, current_period[c] + delta_period))
+                        mod_period = max(28, min(3424, current_period[c] + delta_period))
                         vib_applied[c] = (vib_applied[c] + vib_speed[c]) & 63
-                        bend_semitones = period_to_midi(mod_period) - current_note[c]
-                        fb_val = max(-1.0, min(1.0, bend_semitones / 24.0))
-                        if abs(fb_val - current_fb[c]) >= 0.0005:
-                            tick_ops.append(f"fb{fb_val:.3f}")
-                            current_fb[c] = fb_val
+
+                    # Pitch bend calculation
+                    if current_note[c] > 0 and mod_period > 0:
+                        current_f_midi = period_to_midi(mod_period)
+                        bend_semitones = current_f_midi - current_note[c]
+                        t_fb = max(-1.0, min(1.0, bend_semitones / 24.0))
+                    else:
+                        t_fb = current_fb[c]
 
                     # Volume Slide (0xA, 0x5, 0x6)
                     if effect in (0xA, 0x5, 0x6):
                         delta = vol_slide_speed[c]
                         if delta != 0:
-                            prev_vol = current_vol[c]
                             current_vol[c] = max(0, min(64, current_vol[c] + delta))
-                            if current_vol[c] != prev_vol:
-                                tick_ops.append(f"a{vol_to_db(current_vol[c]):.2f}")
+                    t_vol = current_vol[c]
 
                     # Arpeggio (0x0)
+                    t_arp = None
                     if effect == 0x0 and param > 0 and current_note[c] > 0:
                         step = t % 3
                         arp_offset = arp_x if step == 1 else (arp_y if step == 2 else 0)
-                        tick_ops.append(f"n{current_note[c] + arp_offset}")
+                        t_arp = current_note[c] + arp_offset
 
-                    if tick_ops and t >= tick_cursor:
-                        dt = t - tick_cursor
-                        if dt > 0:
-                            cmds.append(f"+-{dt} {' '.join(tick_ops)}")
-                            tick_cursor = t
+                    tick_records.append({
+                        't': t,
+                        'is_retrig': is_retrig,
+                        'fb': t_fb,
+                        'vol': t_vol,
+                        'arp': t_arp,
+                    })
+
+                # Helper to synthesize command strings for a subset of ticks
+                def _synth_ticks(indices, init_fb, init_vol, init_cursor):
+                    cur_fb = init_fb
+                    cur_vol = init_vol
+                    cursor = init_cursor
+                    res_cmds = []
+                    for idx in indices:
+                        rec = tick_records[idx]
+                        t = rec['t']
+                        if t < cursor:
+                            continue
+                        ops = []
+                        if rec['is_retrig']:
+                            ops.append(f"{retrig_cmd} l1")
+                        if abs(rec['fb'] - cur_fb) >= 0.0005:
+                            ops.append(f"fb{rec['fb']:.3f}" if abs(rec['fb']) >= 0.0005 else "fb0")
+                            cur_fb = rec['fb']
+                        if rec['vol'] != cur_vol:
+                            ops.append(f"a{vol_to_db(rec['vol']):.2f}")
+                            cur_vol = rec['vol']
+                        if rec['arp'] is not None:
+                            ops.append(f"n{rec['arp']}")
+                        if ops:
+                            dt = t - cursor
+                            if dt > 0:
+                                res_cmds.append(f"+-{dt} {' '.join(ops)}")
+                                cursor = t
+                            else:
+                                res_cmds.append(' '.join(ops))
+                    return res_cmds, cur_fb
+
+                # Budget check: keep step under 28 words (Skred hard limit is 32 opcodes) and <= 14 defers (limit 15)
+                chosen_cmds = []
+                final_fb = current_fb[c]
+                if tick_records:
+                    stride = 1
+                    best_cmds = None
+                    best_fb = current_fb[c]
+                    while stride <= current_speed:
+                        if stride == 1:
+                            sel_indices = list(range(len(tick_records)))
                         else:
-                            cmds.append(' '.join(tick_ops))
+                            sel_indices = [
+                                i for i in range(len(tick_records))
+                                if tick_records[i]['is_retrig']
+                                or i == len(tick_records) - 1
+                                or (tick_records[i]['t'] % stride) == 0
+                            ]
+                        cand_cmds, cand_fb = _synth_ticks(sel_indices, current_fb[c], old_vol, tick_cursor)
+                        total_w = len((' '.join(cmds + cand_cmds)).split())
+                        defer_c = sum(1 for cmd_ in cand_cmds if '+-' in cmd_)
+                        if total_w <= 28 and defer_c <= 14:
+                            best_cmds = cand_cmds
+                            best_fb = cand_fb
+                            break
+                        stride += 1
+
+                    if best_cmds is not None:
+                        chosen_cmds = best_cmds
+                        final_fb = best_fb
+                    else:
+                        sel_indices = [
+                            i for i in range(len(tick_records))
+                            if tick_records[i]['is_retrig'] or i == len(tick_records) - 1
+                        ]
+                        chosen_cmds, final_fb = _synth_ticks(sel_indices, current_fb[c], old_vol, tick_cursor)
+
+                    cmds.extend(chosen_cmds)
+                    current_fb[c] = final_fb
 
                 pat_end_step = (total_rows - 1) % skode_steps if sk_pattern_idx == num_skode_patterns - 1 else s_last
                 if cmds:
                     cmd_str = ' '.join(cmds)
                     words = cmd_str.split()
                     if len(words) > 28:
-                        print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands.")
+                        print(f"Warning: Sequence {seq_idx}, row {r}, channel {c} has {len(words)} commands.", file=sys.stderr)
                     pattern_text[(c, sk_pattern_idx)] += f"[{cmd_str}] x{abs_r}\n"
                 else:
                     if abs_r == pat_end_step:
@@ -641,26 +771,31 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                     elif not compress_blank:
                         pattern_text[(c, sk_pattern_idx)] += f"[] x{abs_r}\n"
 
-            # Conductor track (channel 4): sync speed changes and pattern transition control events
+            # Conductor track (channel nch): sync speed changes and pattern transition control events
             cond_cmds = []
             if row_speed_cmd is not None and not is_pat_delay_repeat:
                 cond_cmds.append(f"z%{row_speed_cmd}")
+            if row_tempo_cmd is not None and not is_pat_delay_repeat:
+                cond_cmds.append(f"M{row_tempo_cmd},96")
             if sk_pattern_idx < num_skode_patterns - 1 and abs_r == s_last:
                 cond_cmds.append(f"ce {sk_pattern_idx}")
             if cond_cmds:
-                pattern_text[(4, sk_pattern_idx)] += f"[{' '.join(cond_cmds)}] x{abs_r}\n"
+                pattern_text[(nch, sk_pattern_idx)] += f"[{' '.join(cond_cmds)}] x{abs_r}\n"
 
         # Natural song end step: allow the final row to finish completely before firing ce 127
         end_pat_idx = num_skode_patterns - 1
         end_step = (total_steps - 1) % skode_steps
-        for c in range(4):
+        for c in range(nch):
             pattern_text[(c, end_pat_idx)] += f"[v{c}] x{end_step}\n"
-        pattern_text[(4, end_pat_idx)] += f"[ce 127] x{end_step}\n"
+        if loop and loop_target_step is not None:
+            pattern_text[(nch, end_pat_idx)] += f"[ce 127] x{end_step}\n"
+        else:
+            pattern_text[(nch, end_pat_idx)] += f"[Z0 +2.0 ce 127] x{end_step}\n"
 
         pat_mapping = {}
         if dedupe:
             unique_texts = {}
-            for c in range(5):
+            for c in range(nch + 1):
                 for sk_idx in range(num_skode_patterns):
                     text = pattern_text[(c, sk_idx)]
                     if text in unique_texts:
@@ -670,9 +805,9 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                         unique_texts[text] = pat_id
                         pat_mapping[(c, sk_idx)] = pat_id
                         out.write(f"y{pat_id}\n{text}")
-            print(f"Deduplication: {num_skode_patterns * 5} raw patterns reduced to {len(unique_texts)} unique patterns.")
+            print(f"Deduplication: {num_skode_patterns * (nch + 1)} raw patterns reduced to {len(unique_texts)} unique patterns.", file=sys.stderr)
         else:
-            for c in range(5):
+            for c in range(nch + 1):
                 for sk_idx in range(num_skode_patterns):
                     pat_id = c * num_skode_patterns + sk_idx
                     pat_mapping[(c, sk_idx)] = pat_id
@@ -683,7 +818,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         for i in range(num_skode_patterns - 1):
             next_i = i + 1
             cmds = []
-            for c in range(5):
+            for c in range(nch + 1):
                 cur_pat = pat_mapping[(c, i)]
                 next_pat = pat_mapping[(c, next_i)]
                 cmds.append(f"y{cur_pat} z0 y{next_pat} zq1")
@@ -691,37 +826,36 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             out.write(f"[{' '.join(cmds)}] e>{i}\n")
             out.write(f"/cex {i},4,{i}\n")
 
-        last_pats_5 = [str(pat_mapping[(c, num_skode_patterns - 1)]) for c in range(5)]
-        end_cmds = "Z0 v0 s1.5,1 a-100 v1 s1.5,1 a-100 v2 s1.5,1 a-100 v3 s1.5,1 a-100 +1.6 v0 l0 A v1 l0 A v2 l0 A v3 l0 A v4 a-100 l0 v5 a-100 l0 v6 a-100 l0 v7 a-100 l0"
-        stop_cmds = "Z0 v0 s1.0,1 a-100 v1 s1.0,1 a-100 v2 s1.0,1 a-100 v3 s1.0,1 a-100 +1.1 v0 l0 A v1 l0 A v2 l0 A v3 l0 A v4 a-100 l0 v5 a-100 l0 v6 a-100 l0 v7 a-100 l0"
+        last_pats = [str(pat_mapping[(c, num_skode_patterns - 1)]) for c in range(nch + 1)]
+        stop_cmds = "/cer 0 Z0 O DQ ?ce!"
         if loop and loop_target_step is not None:
             target_p = loop_target_step // skode_steps
             target_step_in_p = loop_target_step % skode_steps
-            target_pats_5 = [str(pat_mapping[(c, target_p)]) for c in range(5)]
-            if num_skode_patterns == 1 and target_step_in_p > 0:
-                loop_cmds = [f"y{p} zg{target_step_in_p}" for p in target_pats_5]
+            target_pats = [str(pat_mapping[(c, target_p)]) for c in range(nch + 1)]
+            if num_skode_patterns == 1 and target_step_in_p == 0:
+                loop_cmds = ["Z!"]
+            elif num_skode_patterns == 1 and target_step_in_p > 0:
+                loop_cmds = [f"y{p} zg{target_step_in_p}" for p in target_pats]
             else:
-                loop_cmds = [f"y{p} z0" for p in last_pats_5] + [f"y{p} z1" for p in target_pats_5] + ["y127 z1"]
+                loop_cmds = [f"y{p} z0" for p in last_pats] + [f"y{p} z1" for p in target_pats] + ["y127 z1"]
                 if target_step_in_p > 0:
-                    loop_cmds += [f"y{p} zg{target_step_in_p}" for p in target_pats_5]
+                    loop_cmds += [f"y{p} zg{target_step_in_p}" for p in target_pats]
             out.write(f"[{' '.join(loop_cmds)}] e>127\n")
+            out.write("/cex 127,4,127\n\n/cer 1\n\n")
         else:
-            out.write(f"[{end_cmds}] e>127\n")
-        out.write("/cex 127,4,127\n\n/cer 1\n\n")
+            out.write(f"[{stop_cmds}] /ceb 4 127\n\n/cer 1\n\n")
 
         # Macros
         out.write("# === MACROS ===\n")
         out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
-        play_cmds = [f"v{c} s0.002,1 l1 y{pat_mapping[(c, 0)]} z1" for c in range(4)] + [
-            f"y{pat_mapping[(4, 0)]} z1",
-            "y127 z1",
-        ]
+        play_pats = [f"y{pat_mapping[(c, 0)]} z1" for c in range(nch + 1)] + ["y127 z1"]
+        play_cmds = "?ce! /cer 1 Z0 Z! " + " ".join(play_pats)
         efx_cmds = "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
-        out.write(f"[play]: {' '.join(play_cmds)};\n")
+        nofx_cmds = "v0 p-.6 v1 p.6 v2 p.6 v3 p-.6"
+        out.write(f"[play]: {play_cmds};\n")
         out.write(f"[stop]: {stop_cmds};\n")
         out.write(f"[efx!]: {efx_cmds};\n\n")
-        nofx_cmds = "v0 p-.6 v1 p.6 v2 p-.6 v3 p.6";
-        out.write(f"[nofx]: {nofx_cmds};\n\n");
+        out.write(f"[nofx]: {nofx_cmds};\n\n")
 
         # Info banner & credits
         out.write("# === INFO DISPLAY ON LOAD ===\n")
@@ -730,7 +864,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             out.write(f"[{line}] puts\n")
         if credits_lines:
             out.write("[] puts\n")
-        out.write(f"[play : {' '.join(play_cmds)}] puts\n")
+        out.write(f"[play : {play_cmds}] puts\n")
         out.write(f"[stop : {stop_cmds}] puts\n")
         out.write(f"[efx! : {efx_cmds}] puts\n")
         out.write(f"[nofx : {nofx_cmds}] puts\n");
@@ -812,7 +946,8 @@ if __name__ == '__main__':
     parser.add_argument("-x", "--extract", action="store_true", help="Extract samples to disk (creates samples/ dir)")
     parser.add_argument("-d", "--dedupe", action="store_true", help="Deduplicate Skode patterns (2-pass)")
     parser.add_argument("-l", "--loop", action="store_true", help="Loop song at end instead of stopping")
+    parser.add_argument("--max-channels", type=int, default=0, help="Convert only the first N channels (0 = all channels in the file)")
     parser.add_argument("--max-steps", type=int, default=0, help="Max steps per Skode pattern (0 = unlimited). Use 128 for older pulp versions.")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps, loop=args.loop)
+    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps, loop=args.loop, max_channels=args.max_channels)
 

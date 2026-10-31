@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MOD to Skode</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./coi-serviceworker.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.Module = window.Module || {};
+    window.__skredStdout = [];
+    window.Module.print = function(...args) {
+      const line = args.join(" ");
+      window.__skredStdout.push(line);
+      console.log("[SKRED OUT]", ...args);
+    };
+    window.Module.printErr = function(...args) {
+      const line = args.join(" ");
+      window.__skredStdout.push("[ERR] " + line);
+      console.error("[SKRED ERR]", ...args);
+    };
+    window.Module.locateFile = function(path) {
+      return new URL("vendor/skred/" + path, window.location.href).href;
+    };
+  </script>
+  <script src="./vendor/skred/skred_api.js"></script>
+  <script type="module" src="./entry.mjs"></script>
+</body>
+</html>
