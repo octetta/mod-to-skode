@@ -239,8 +239,7 @@ document.getElementById('play-btn').addEventListener('click', async () => {
   M.FS.writeFile('/song.zip', new Uint8Array(zipBuffer));
 
   // Mount zip via Skode VFS (%z), load main.sk, and play
-  M.ccall('skred_command', 'number', ['string'], ['%z /song.zip']);
-  M.ccall('skred_command', 'number', ['string'], ['[main.sk] /ls']);
+  M.ccall('skred_command', 'number', ['string'], ['%z [song.zip];']);
   M.ccall('skred_command', 'number', ['string'], ['play']);
 });
 

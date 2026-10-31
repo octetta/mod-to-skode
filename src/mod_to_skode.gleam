@@ -507,7 +507,7 @@ fn view_drop_zone(model: Model) -> Element(Msg) {
       html.pre([class("developer-code-preview")], [
         html.code([], [
           text(
-            "// 1. Include coi-serviceworker.js and vendor/skred/skred_api.js\n// 2. Fetch the generated .zip and write to Emscripten VFS:\nModule.FS.writeFile('/song.zip', new Uint8Array(await zipResponse.arrayBuffer()));\n// 3. Mount and trigger playback:\nModule.ccall('skred_command', 'number', ['string'], ['%z /song.zip; [main.sk] /ls; play']);",
+            "// 1. Include coi-serviceworker.js and vendor/skred/skred_api.js\n// 2. Fetch the generated .zip and write to Emscripten VFS:\nModule.FS.writeFile('/song.zip', new Uint8Array(await zipResponse.arrayBuffer()));\n// 3. Mount and trigger playback:\nModule.ccall('skred_command', 'number', ['string'], ['%z [song.zip]; play']);",
           ),
         ]),
       ]),
@@ -712,7 +712,7 @@ fn view_embed_guide(_model: Model, mod_file: ModFile) -> Element(Msg) {
               <> zip_name
               <> " into Skred Virtual File System\n  const res = await fetch('./"
               <> zip_name
-              <> "');\n  const zipBuf = await res.arrayBuffer();\n  M.FS.writeFile('/song.zip', new Uint8Array(zipBuf));\n  \n  // Mount zip via Skode VFS (%z) and load script\n  M.ccall('skred_command', 'number', ['string'], ['%z /song.zip']);\n  M.ccall('skred_command', 'number', ['string'], ['[main.sk] /ls']);\n  M.ccall('skred_command', 'number', ['string'], ['play']);\n});\n\n// Stop and silence audio\ndocument.getElementById('stop-btn').addEventListener('click', () => {\n  const M = window.Module;\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Panic: silence all voices\n});",
+              <> "');\n  const zipBuf = await res.arrayBuffer();\n  M.FS.writeFile('/song.zip', new Uint8Array(zipBuf));\n  \n  // Mount zip via Skode VFS (%z) and load script\n  M.ccall('skred_command', 'number', ['string'], ['%z [song.zip];']);\n  M.ccall('skred_command', 'number', ['string'], ['play']);\n});\n\n// Stop and silence audio\ndocument.getElementById('stop-btn').addEventListener('click', () => {\n  const M = window.Module;\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Panic: silence all voices\n});",
             ),
           ]),
         ]),
