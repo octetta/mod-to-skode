@@ -145,16 +145,18 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
 
     FileDropped(filename, data) -> {
+      let stop_eff = stop_effect()
       case mod_parser.parse(filename, data) {
         Error(err) -> {
           #(
             Model(
               ..model,
+              is_playing: False,
               error_message: Some(err),
               is_converting: False,
               status_text: "Parse error: " <> err,
             ),
-            effect.none(),
+            stop_eff,
           )
         }
         Ok(mod_file) -> {
@@ -163,18 +165,20 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               #(
                 Model(
                   ..model,
+                  is_playing: False,
                   active_file: Some(mod_file),
                   error_message: Some(err),
                   is_converting: False,
                   status_text: "Conversion error: " <> err,
                 ),
-                effect.none(),
+                stop_eff,
               )
             }
             Ok(conv_res) -> {
               #(
                 Model(
                   ..model,
+                  is_playing: False,
                   active_file: Some(mod_file),
                   conversion: Some(conv_res),
                   is_converting: False,
@@ -185,7 +189,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     <> int.to_string(conv_res.total_rows)
                     <> " rows).",
                 ),
-                effect.none(),
+                stop_eff,
               )
             }
           }
@@ -285,10 +289,6 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     }
 
     ResetClicked -> {
-      let eff = case model.is_playing {
-        True -> stop_effect()
-        False -> effect.none()
-      }
       #(
         Model(
           ..model,
@@ -298,7 +298,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           error_message: None,
           status_text: "Ready. Drag and drop any .mod file to convert.",
         ),
-        eff,
+        stop_effect(),
       )
     }
 
@@ -310,10 +310,11 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(
         Model(
           ..model,
+          is_playing: False,
           is_converting: True,
           status_text: "Downloading & converting demo " <> filename <> "...",
         ),
-        load_demo_effect(url, filename),
+        effect.batch([stop_effect(), load_demo_effect(url, filename)]),
       )
     }
   }
@@ -708,11 +709,11 @@ fn view_embed_guide(_model: Model, mod_file: ModFile) -> Element(Msg) {
         html.pre([class("code-block")], [
           html.code([], [
             text(
-              "// Start Audio on User Interaction (Click or Tap)\ndocument.getElementById('play-btn').addEventListener('click', async () => {\n  const M = window.Module;\n  \n  // Resume Web Audio Context if suspended\n  if (M.audioContext && M.audioContext.state === 'suspended') {\n    await M.audioContext.resume();\n  }\n  \n  // Start hardware audio device (128 buffer size, 256 voices)\n  if (typeof M._skred_start === 'function') {\n    M._skred_enumerate_devices?.(0);\n    M._skred_audio_select?.(0, 0);\n    M._skred_audio_select?.(1, -2);\n    M._skred_start(128, 256, -1);\n  }\n  \n  // Fetch and mount "
+              "// Start Audio on User Interaction (Click or Tap)\ndocument.getElementById('play-btn').addEventListener('click', async () => {\n  const M = window.Module;\n  \n  // Resume Web Audio Context if suspended\n  if (M.audioContext && M.audioContext.state === 'suspended') {\n    await M.audioContext.resume();\n  }\n  \n  // Start hardware audio device (128 buffer size, 256 voices)\n  if (typeof M._skred_start === 'function') {\n    M._skred_enumerate_devices?.(0);\n    M._skred_audio_select?.(0, 0);\n    M._skred_audio_select?.(1, -2);\n    M._skred_start(128, 256, -1);\n  }\n  \n  // Clean previous playback, unmount zip, clear patterns and voices\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['%zu']);\n  M.ccall('skred_command', 'number', ['string'], ['Y-1']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']);\n\n  // Fetch and mount "
               <> zip_name
               <> " into Skred Virtual File System\n  const res = await fetch('./"
               <> zip_name
-              <> "');\n  const zipBuf = await res.arrayBuffer();\n  M.FS.writeFile('/song.zip', new Uint8Array(zipBuf));\n  \n  // Mount zip via Skode VFS (%z) and load script\n  M.ccall('skred_command', 'number', ['string'], ['%z [song.zip];']);\n  M.ccall('skred_command', 'number', ['string'], ['play']);\n});\n\n// Stop and silence audio\ndocument.getElementById('stop-btn').addEventListener('click', () => {\n  const M = window.Module;\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Panic: silence all voices\n});",
+              <> "');\n  const zipBuf = await res.arrayBuffer();\n  M.FS.writeFile('/song.zip', new Uint8Array(zipBuf));\n  \n  // Mount zip via Skode VFS (%z) and load script\n  M.ccall('skred_command', 'number', ['string'], ['%z [song.zip];']);\n  M.ccall('skred_command', 'number', ['string'], ['play']);\n});\n\n// Stop, unmount, clear patterns, and silence audio\ndocument.getElementById('stop-btn').addEventListener('click', () => {\n  const M = window.Module;\n  M.ccall('skred_command', 'number', ['string'], ['stop']);\n  M.ccall('skred_command', 'number', ['string'], ['%zu']);\n  M.ccall('skred_command', 'number', ['string'], ['Y-1']);\n  M.ccall('skred_command', 'number', ['string'], ['S-1']);\n});",
             ),
           ]),
         ]),
@@ -792,14 +793,35 @@ fn view_instrument_row(ins: Instrument) -> Element(Msg) {
 fn view_skode_code(conv_opt: option.Option(ConversionResult)) -> Element(Msg) {
   case conv_opt {
     Some(conv) -> {
+      let preview_text = get_preview_lines(conv.skode_text, 500)
       html.div([class("code-container")], [
         html.pre([class("skode-view")], [
-          html.code([], [text(conv.skode_text)]),
+          html.code([], [text(preview_text)]),
         ]),
       ])
     }
     None ->
       html.div([class("empty-notice")], [text("No converted script available.")])
+  }
+}
+
+fn get_preview_lines(content: String, max_lines: Int) -> String {
+  let lines = string.split(content, "\n")
+  let total = list.length(lines)
+  case total > max_lines {
+    True -> {
+      let preview =
+        lines
+        |> list.take(max_lines)
+        |> string.join("\n")
+      preview
+      <> "\n\n// ... [Showing first "
+      <> int.to_string(max_lines)
+      <> " lines of "
+      <> int.to_string(total)
+      <> " total lines. Download the complete .ZIP to view the entire main.sk script] ...\n"
+    }
+    False -> content
   }
 }
 

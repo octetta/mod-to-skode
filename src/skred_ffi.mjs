@@ -100,8 +100,14 @@ export function initEngine(callback) {
         win.Module._skred_logger(1);
       }
 
+      executeSkredCommand("stop");
+      executeSkredCommand("%zu");
+      executeSkredCommand("Y-1");
       executeSkredCommand("S-1");
       executeSkredCommand("V0");
+
+      removeAudioUnlockListeners();
+      audioUnlocked = true;
 
       startWasmEventPump(win.Module);
       flushCommandQueue();
@@ -175,15 +181,30 @@ export function ensureEngineRunning() {
   return false;
 }
 
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  ensureAudioContext();
+  ensureEngineRunning();
+  removeAudioUnlockListeners();
+}
+
+function removeAudioUnlockListeners() {
+  if (typeof win.removeEventListener === "function") {
+    win.removeEventListener("pointerdown", unlockAudio);
+    win.removeEventListener("touchstart", unlockAudio);
+    win.removeEventListener("keydown", unlockAudio);
+    win.removeEventListener("click", unlockAudio);
+  }
+}
+
 if (typeof win.addEventListener === "function") {
-  const unlock = () => {
-    ensureAudioContext();
-    ensureEngineRunning();
-  };
-  win.addEventListener("pointerdown", unlock, { passive: true });
-  win.addEventListener("touchstart", unlock, { passive: true });
-  win.addEventListener("keydown", unlock, { passive: true });
-  win.addEventListener("click", unlock, { passive: true });
+  win.addEventListener("pointerdown", unlockAudio, { passive: true });
+  win.addEventListener("touchstart", unlockAudio, { passive: true });
+  win.addEventListener("keydown", unlockAudio, { passive: true });
+  win.addEventListener("click", unlockAudio, { passive: true });
 }
 
 function startWasmEventPump(M) {
@@ -371,11 +392,20 @@ export function downloadZip(skodeText, samplesList, filename) {
 
 export function loadAndPlaySkode(mainSkText, samplesList) {
   ensureEngineRunning();
+  removeAudioUnlockListeners();
+  audioUnlocked = true;
+
   const M = getWasmModule();
   if (!M || !M.FS) {
     console.warn("[mod-to-skode] WASM FS not ready for playback.");
     return;
   }
+
+  // 1. Immediately stop previous playback, unmount previous zip, clear all patterns (Y-1) and voices (S-1)
+  executeSkredCommand("stop");
+  executeSkredCommand("%zu");
+  executeSkredCommand("Y-1");
+  executeSkredCommand("S-1");
 
   createZipArchive(mainSkText, samplesList, (_blob, zipData) => {
     if (!zipData) {
@@ -387,9 +417,13 @@ export function loadAndPlaySkode(mainSkText, samplesList) {
       try { M.FS.writeFile("/song.zip", zipData); } catch (e) {}
       try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
-      // Reset voices, unmount any previous VFS, mount zip via Skode VFS, trigger playback
-      executeSkredCommand("S-1");
+      // Clean engine state right before mounting new zip
+      executeSkredCommand("stop");
       executeSkredCommand("%zu");
+      executeSkredCommand("Y-1");
+      executeSkredCommand("S-1");
+
+      // Mount zip via Skode VFS (%z) and trigger playback
       executeSkredCommand("%z [song.zip];");
       executeSkredCommand("play");
     } catch (err) {
@@ -400,10 +434,15 @@ export function loadAndPlaySkode(mainSkText, samplesList) {
 
 export function stopPlayback() {
   executeSkredCommand("stop");
+  executeSkredCommand("%zu");
+  executeSkredCommand("Y-1");
   executeSkredCommand("S-1");
 }
 
 export function panicEngine() {
+  executeSkredCommand("stop");
+  executeSkredCommand("%zu");
+  executeSkredCommand("Y-1");
   executeSkredCommand("S-1");
 }
 

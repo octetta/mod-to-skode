@@ -233,6 +233,12 @@ document.getElementById('play-btn').addEventListener('click', async () => {
     M._skred_start(128, 256, -1);
   }
 
+  // Clean previous playback, unmount zip, clear patterns and voices
+  M.ccall('skred_command', 'number', ['string'], ['stop']);
+  M.ccall('skred_command', 'number', ['string'], ['%zu']);
+  M.ccall('skred_command', 'number', ['string'], ['Y-1']);
+  M.ccall('skred_command', 'number', ['string'], ['S-1']);
+
   // Fetch the generated .zip and write to Emscripten Virtual File System
   const response = await fetch('./space_debris.zip');
   const zipBuffer = await response.arrayBuffer();
@@ -243,12 +249,14 @@ document.getElementById('play-btn').addEventListener('click', async () => {
   M.ccall('skred_command', 'number', ['string'], ['play']);
 });
 
-// Stop and silence all voices
+// Stop, unmount, clear patterns, and silence all voices
 document.getElementById('stop-btn').addEventListener('click', () => {
   const M = window.Module;
   if (!M) return;
   M.ccall('skred_command', 'number', ['string'], ['stop']);
-  M.ccall('skred_command', 'number', ['string'], ['S-1']); // Silences all active voices
+  M.ccall('skred_command', 'number', ['string'], ['%zu']);
+  M.ccall('skred_command', 'number', ['string'], ['Y-1']);
+  M.ccall('skred_command', 'number', ['string'], ['S-1']);
 });
 ```
 

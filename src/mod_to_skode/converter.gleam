@@ -501,7 +501,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
     _, _ -> #(6, 125)
   }
 
-  let #(unrolled_rows, _seq_steps, loop_target_step) =
+  let #(unrolled_rows, _seq_steps, _loop_target_step) =
     unroll_mod_rows(mod.patterns, mod.sequence, mod.restart_pos)
 
   let total_rows = list.length(unrolled_rows)
@@ -512,7 +512,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
 
       // Header comment and initialization
       let init_sb = [
-        "# Converted by mod-to-skode\n",
+        "# Converted from " <> mod.filename <> "\n",
         "M " <> int.to_string(initial_tempo) <> " 96\n\n",
         "# === INITIALIZATION ===\n",
         string.join(
@@ -595,6 +595,9 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
       let s_last = total_steps - 1
       let master_cond = [
         "# === THE MASTER CONDUCTOR ===\n",
+        "# y127 is an empty pattern set as the 'Master' (yp127).\n",
+        "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
+        "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
         "y127 %"
           <> int.to_string(initial_speed)
           <> " [v0] x"
@@ -630,10 +633,10 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
           )
         })
 
-      let end_cond_line = case loop_target_step {
-        Some(_) -> #(nch, "[ce 127] x" <> int.to_string(end_step) <> "\n")
-        None -> #(nch, "[Z0 +2.0 ce 127] x" <> int.to_string(end_step) <> "\n")
-      }
+      let end_cond_line = #(
+        nch,
+        "[Z0 +2.0 ce 127] x" <> int.to_string(end_step) <> "\n",
+      )
 
       let all_end_lines = [end_cond_line, ..end_ch_lines]
       let full_pattern_texts =
@@ -652,31 +655,11 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
 
       // Stop & Play Macros matching Skred v0.80.0
       let stop_cmds = "/cer 0 Z0 O DQ ?ce!"
-      let end_macros = case loop_target_step {
-        Some(target_step) -> {
-          let loop_cmds = case target_step == 0 {
-            True -> "Z!"
-            False -> {
-              let pats =
-                list.map(make_range(0, nch), fn(c) {
-                  "y" <> int.to_string(c) <> " zg" <> int.to_string(target_step)
-                })
-              string.join(pats, " ")
-            }
-          }
-          "\n# === END OF SONG LOOP ===\n"
-          <> "["
-          <> loop_cmds
-          <> "] e>127\n"
-          <> "/cex 127,4,127\n\n/cer 1\n\n"
-        }
-        None -> {
-          "\n# === END OF SONG HALT ===\n"
-          <> "["
-          <> stop_cmds
-          <> "] /ceb 4 127\n\n/cer 1\n\n"
-        }
-      }
+      let end_macros =
+        "\n# === PATTERN TRANSITIONS & END OF SONG LOOP ===\n"
+        <> "["
+        <> stop_cmds
+        <> "] /ceb 4 127\n\n/cer 1\n\n"
 
       let play_pats =
         list.map(make_range(0, nch), fn(c) { "y" <> int.to_string(c) <> " z1" })
@@ -688,6 +671,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
 
       let macro_defs = [
         "# === MACROS ===\n",
+        "# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n",
         "[play]: " <> play_cmds <> ";\n",
         "[stop]: " <> stop_cmds <> ";\n",
         "[efx!]: " <> efx_cmds <> ";\n\n",
@@ -1135,7 +1119,7 @@ fn process_single_channel(
   }
 
   // Note trigger
-  let #(ch_note, tick_cursor, cmds) = case
+  let #(ch_note, tick_cursor, cmds, note_cmd_opt) = case
     note.midi,
     note.effect != 0x3 && note.effect != 0x5
   {
@@ -1217,9 +1201,9 @@ fn process_single_channel(
           }
         }
       }
-      #(ch_fb0, cur_cursor, [note_cmd <> " l1", ..cmds])
+      #(ch_fb0, cur_cursor, [note_cmd <> " l1", ..cmds], Some(note_cmd))
     }
-    _, _ -> #(ch_wave, 0, cmds)
+    _, _ -> #(ch_wave, 0, cmds, None)
   }
 
   // Fine Portamento E1x / E2x
@@ -1439,8 +1423,8 @@ fn process_single_channel(
     True -> ext_val
     False -> 0
   }
-  let retrig_cmd = case note.midi {
-    Some(n) -> Some("n" <> int.to_string(n))
+  let retrig_cmd = case note_cmd_opt {
+    Some(cmd) -> Some(cmd)
     None if ch_vol_slide.note > 0 ->
       Some("n" <> int.to_string(ch_vol_slide.note))
     _ -> None
