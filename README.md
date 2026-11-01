@@ -105,17 +105,17 @@ bin/mod2skode <input.mod> [options]
 ### Examples
 ```bash
 # Package a module into a complete, standalone ready-to-play ZIP
-bin/mod2skode ELYSIUM.MOD -o elysium.zip
+bin/mod2skode mods/ELYSIUM.MOD -o elysium.zip
 
 # Output the Skode script to a file and extract WAV samples to samples/
-bin/mod2skode space_debris.mod -o space_debris.sk -x
+bin/mod2skode mods/space_debris.mod -o space_debris.sk -x
 
 # Stream the Skode script directly to stdout or pipe into tools
-bin/mod2skode aftertouch.mod > aftertouch.sk
+bin/mod2skode mods/aftertouch.mod > aftertouch.sk
 ```
 
 ### Batch Conversion via Make
-Convert all `.mod` files in the repository directory to `.zip` in one step using the native CLI:
+Convert all `.mod` files in the `mods/` directory to `.zip` in one step using the native CLI:
 ```bash
 make all
 ```
@@ -330,13 +330,14 @@ mod-to-skode Makefile targets:
   make preview      Preview production build in dist/ on 0.0.0.0:3000
   make test         Run test suite via Gleam JavaScript target
   make test-gleam   Alias for 'make test'
-  make test-cli     Test the standalone CLI binary on ELYSIUM.MOD
+  make test-cli     Test the standalone CLI binary on mods/ELYSIUM.MOD
+  make test-mods    Test conversion of all 20 demo modules in mods/
   make check        Verify compilation and Gleam formatting
   make format       Format all Gleam source and test files
   make deps         Install Gleam and npm dependencies
   make update-skred Pull Skred WASM from github.com/octetta/pulp (latest or VERSION=x.y.z)
-  make all          Convert all local .mod/.MOD files to .zip via bin/mod2skode
-  make <file>.zip   Convert a single .mod file to .zip via bin/mod2skode
+  make all          Convert all demo modules in mods/ to out/*.zip via bin/mod2skode
+  make <file>.zip   Convert a single module in mods/ to .zip via bin/mod2skode
   make install      Deploy ELYSIUM.zip to ../skred-web/amiga.zip
   make clean        Remove generated .zip files, build, and dist artifacts
   make distclean    Deep clean including .vendor and bin directories
@@ -421,27 +422,27 @@ The project is structured with pinned, deterministic dependencies across the Gle
   - **Karsten Obarski**: Creator of *The Ultimate Soundtracker* (1987) on the Commodore Amiga, who invented the 4-channel MOD format, step pattern structure, and sample triggering model that started the tracker movement.
   - **Lars Hamre, Kjetil Nygård, Peter Hesselberg, and Michael Kleps**: Authors of *ProTracker*, the legendary Amiga music editor whose playback quirks and effect commands set the standard for tracker music worldwide.
 - **Demoscene Composers & Module Attributions**:
-  This repository vendors 20 historical module files used for automated parity verification, test benchmarking, and demonstration:
-  - **`ELYSIUM.MOD`**: Volker Tripp (*Jester / Sanity*) – Title track from the legendary Amiga demo *Elysium* (Sanity, Germany).
-  - **`stardust-memories.mod`**: Volker Tripp (*Jester / Sanity*) – Soundscape composed for Sanity's *World of Commodore 92* demo (1992).
-  - **`space_debris.mod`**: Markus Schneider (*Captain / Image*) – Iconic 1991 melodic synthesizer tracker anthem.
-  - **`beyond_music.mod`**: Markus Schneider (*Captain / Image*) – 1st place winner in The Gathering 1991 music competition (Parikkala, Finland).
-  - **`creamof.mod`** (*Cream of the Earth*): Eckart Herzog (*Romeo Knight / Red Sector Inc.*) – Historic rock/synth module from the *RSI Megademo* (1989/1990).
-  - **`tempest-acidjazz.mod`** (*Acidjazzed Evening*): Aleksi Eeben (*Tempest / Damage / Chippendales*) – 1st place winner in the Assembly 2000 (asm2k) oldskool music compo.
-  - **`jogeir_liljedahl_-_addiction.mod`**: Jogeir Liljedahl (*Noiseless*) – Classic 1992 Amiga melody.
-  - **`physical_presence.mod`**: Jogeir Liljedahl (*Virtual Dreams / Fairlight*) – Soundtrack for the landmark 1993 demo *Physical Presence*.
-  - **`street_jungle.mod`**: Antti Mikkonen (*Heatbeat / Rebels*) – High-energy breakbeat/jungle module (Kajaani, Finland).
-  - **`bananasplit.mod`**: Juha Kujanpää (*Dizzy / CNCD*) – Funk/fusion tracker groove (1993, Finland).
-  - **`aftertouch.mod`**: *Substance (Mono & Kinky)* – Atmospheric 1997 jungle/drum & bass competition tune for Digital Candy BBS.
-  - **`random_voice_-_monday.mod`**: Edvin Fladen (*Random Voice*) – Classic melodic module (April 1991, Norway).
-  - **`_1995.mod`**: *Angelwings / Apex* – Chiptune composed for Lord Lech / Humbugs (April 1995).
-  - **`_4k_introtune_.mod`**: *Bionic / Erotic* – Compact chiptune composed for the *Turnips 4k Intro* (October 1996, Gliwice, Poland).
-  - **`class09.mod`**: *Maktone* – Signature compact, crystalline Amiga tracker chiptune.
-  - **`musiklinjen.mod`**: Mats & Thomas (*Firefox & Tip / Phenomena*) – Legendary Swedish duo celebrated for Phenomena's *Enigma* and *Megademo*.
-  - **`projectx.mod`**: Remixed by *Bladswede* – Tribute remix of Allister Brimble's iconic 1992 Team17 shoot 'em up game soundtrack *Project-X*.
-  - **`hymn_to_aurora.mod`**: *Clawz / Aurora / Shamus* – Ambient melodic soundscape.
-  - **`giel.mod`**: *Giel van Dooren* – Classic European Amiga tracker composition.
-  - **`DOPE.MOD`**: Classic multi-track electronic module featuring Roland TR-808/909 percussion and sampled groove loops.
+  This repository vendors 20 historical module files located under [`mods/`](mods/) used for automated parity verification, test benchmarking, and demonstration:
+  - **`mods/ELYSIUM.MOD`**: Volker Tripp (*Jester / Sanity*) – Title track from the legendary Amiga demo *Elysium* (Sanity, Germany).
+  - **`mods/stardust-memories.mod`**: Volker Tripp (*Jester / Sanity*) – Soundscape composed for Sanity's *World of Commodore 92* demo (1992).
+  - **`mods/space_debris.mod`**: Markus Schneider (*Captain / Image*) – Iconic 1991 melodic synthesizer tracker anthem.
+  - **`mods/beyond_music.mod`**: Markus Schneider (*Captain / Image*) – 1st place winner in The Gathering 1991 music competition (Parikkala, Finland).
+  - **`mods/creamof.mod`** (*Cream of the Earth*): Eckart Herzog (*Romeo Knight / Red Sector Inc.*) – Historic rock/synth module from the *RSI Megademo* (1989/1990).
+  - **`mods/tempest-acidjazz.mod`** (*Acidjazzed Evening*): Aleksi Eeben (*Tempest / Damage / Chippendales*) – 1st place winner in the Assembly 2000 (asm2k) oldskool music compo.
+  - **`mods/jogeir_liljedahl_-_addiction.mod`**: Jogeir Liljedahl (*Noiseless*) – Classic 1992 Amiga melody.
+  - **`mods/physical_presence.mod`**: Jogeir Liljedahl (*Virtual Dreams / Fairlight*) – Soundtrack for the landmark 1993 demo *Physical Presence*.
+  - **`mods/street_jungle.mod`**: Antti Mikkonen (*Heatbeat / Rebels*) – High-energy breakbeat/jungle module (Kajaani, Finland).
+  - **`mods/bananasplit.mod`**: Juha Kujanpää (*Dizzy / CNCD*) – Funk/fusion tracker groove (1993, Finland).
+  - **`mods/aftertouch.mod`**: *Substance (Mono & Kinky)* – Atmospheric 1997 jungle/drum & bass competition tune for Digital Candy BBS.
+  - **`mods/random_voice_-_monday.mod`**: Edvin Fladen (*Random Voice*) – Classic melodic module (April 1991, Norway).
+  - **`mods/_1995.mod`**: *Angelwings / Apex* – Chiptune composed for Lord Lech / Humbugs (April 1995).
+  - **`mods/_4k_introtune_.mod`**: *Bionic / Erotic* – Compact chiptune composed for the *Turnips 4k Intro* (October 1996, Gliwice, Poland).
+  - **`mods/class09.mod`**: *Maktone* – Signature compact, crystalline Amiga tracker chiptune.
+  - **`mods/musiklinjen.mod`**: Mats & Thomas (*Firefox & Tip / Phenomena*) – Legendary Swedish duo celebrated for Phenomena's *Enigma* and *Megademo*.
+  - **`mods/projectx.mod`**: Remixed by *Bladswede* – Tribute remix of Allister Brimble's iconic 1992 Team17 shoot 'em up game soundtrack *Project-X*.
+  - **`mods/hymn_to_aurora.mod`**: *Clawz / Aurora / Shamus* – Ambient melodic soundscape.
+  - **`mods/giel.mod`**: *Giel van Dooren* – Classic European Amiga tracker composition.
+  - **`mods/DOPE.MOD`**: Classic multi-track electronic module featuring Roland TR-808/909 percussion and sampled groove loops.
   - Respect and gratitude to all tracker musicians whose artistry and sonic ingenuity defined early computer music culture.
 
 ---
