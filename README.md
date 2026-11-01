@@ -28,6 +28,8 @@ Available both as a **100% client-side web application** with in-browser WASM pl
   - [Makefile Targets](#makefile-targets)
   - [Updating Skred WASM](#updating-skred-wasm)
   - [GitHub Pages Deployment](#github-pages-deployment)
+- [Dependencies & Versions](#dependencies--versions)
+- [Credits & Acknowledgements](#credits--acknowledgements)
 - [License](#license)
 
 ---
@@ -364,6 +366,83 @@ The web application is automatically built and deployed to GitHub Pages at [octe
 - Runs `gleam test --target javascript` and `gleam check`.
 - Bundles the production application via `npm run build` into `dist/`.
 - Deploys the static bundle with `coi-serviceworker.js` to ensure WebAssembly multi-threading isolation works seamlessly on GitHub Pages.
+
+---
+
+## Dependencies & Versions
+
+The project is structured with pinned, deterministic dependencies across the Gleam, JavaScript, WebAssembly, and native C toolchains:
+
+### Core Toolchains & Runtimes
+
+| Component | Pinned / Required Version | Purpose |
+| :--- | :--- | :--- |
+| **[Gleam](https://gleam.run/)** | `^1.19.2` | Primary language; compiles to ES module JavaScript |
+| **[Node.js](https://nodejs.org/)** | `^20.0.0` (tested `v26.12.0`) | Development server, package runner, and test environment |
+| **[GCC](https://gcc.gnu.org/) / Clang** | Standard C99 / GNU99 | Compiles QuickJS and links the standalone native CLI binary |
+| **[Skred Audio Engine](https://github.com/octetta/pulp)** | `v0.80.0` (via `SKRED_VERSION`) | Real-time multi-threaded WebAssembly audio synthesizer |
+
+### Gleam Packages (`gleam.toml` & `manifest.toml`)
+
+| Package | Version | Description |
+| :--- | :--- | :--- |
+| **`gleam_stdlib`** | `1.0.5` | Standard library: algebraic data types, dicts, lists, bit arrays, results |
+| **`lustre`** | `5.7.1` | The Elm Architecture frontend framework for the reactive web application |
+| **`gleam_json`** | `3.1.0` | JSON encoding and decoding primitives |
+| **`gleeunit`** | `1.11.0` | Test framework for running Gleam tests against the JS runtime |
+
+### JavaScript & Build Tools (`package.json`)
+
+| Package | Version | Description |
+| :--- | :--- | :--- |
+| **`vite`** | `^6.2.0` | High-speed frontend development server and production bundler |
+| **`esbuild`** | `^0.25.0` | High-performance JS bundler for packaging the standalone QuickJS CLI |
+| **`coi-serviceworker`** | `^0.1.7` | Enables COOP/COEP isolation headers for WebAssembly multi-threading |
+
+### Vendored Engines & Libraries (`vendor/` & `.vendor/`)
+
+| Library | Origin / Commit | Description |
+| :--- | :--- | :--- |
+| **[QuickJS](https://bellard.org/quickjs/)** | Fabrice Bellard & Charlie Gordon | Embeddable C JS engine (`libquickjs.a` + `qjsc`) for standalone native binaries |
+| **[fflate](https://github.com/101arrowz/fflate)** | `v0.8.2` (Arjun Barrett) | Pure JavaScript synchronous and asynchronous Deflate/ZIP compression |
+| **Skred WASM Runtime** | `v0.80.0` (`octetta/pulp`) | `skred_api.js` and `skred_api.wasm` Emscripten WebAssembly runtime files |
+
+---
+
+## Credits & Acknowledgements
+
+- **[Octetta](https://github.com/octetta)**: Architecture, converter algorithms, Skode sequencer design, and the [Skred audio engine](https://github.com/octetta/pulp).
+- **[Fabrice Bellard](https://bellard.org/) & Charlie Gordon**: Authors of **QuickJS**, the remarkably compact, standards-compliant C JavaScript engine that powers the self-contained native `mod2skode` CLI.
+- **[Louis Pilfold](https://github.com/lpil) & the Gleam Community**: Creators of the friendly, robust, type-safe [Gleam](https://gleam.run/) language.
+- **[Hayleigh Thompson](https://github.com/hayleigh-dot-dev) & the Lustre Contributors**: Creators of [Lustre](https://hexdocs.pm/lustre/), bringing The Elm Architecture to Gleam with declarative elegance.
+- **Arjun Barrett ([@101arrowz](https://github.com/101arrowz))**: Author of [fflate](https://github.com/101arrowz/fflate), the fastest zero-dependency pure JavaScript compression library.
+- **Guido van Rossum & the Python Software Foundation**: Creators of Python, which hosted the initial prototype implementation ([`mod2skode.py`](mod2skode.py)).
+- **Amiga Tracker Pioneers**:
+  - **Karsten Obarski**: Creator of *The Ultimate Soundtracker* (1987) on the Commodore Amiga, who invented the 4-channel MOD format, step pattern structure, and sample triggering model that started the tracker movement.
+  - **Lars Hamre, Kjetil Nygård, Peter Hesselberg, and Michael Kleps**: Authors of *ProTracker*, the legendary Amiga music editor whose playback quirks and effect commands set the standard for tracker music worldwide.
+- **Demoscene Composers & Module Attributions**:
+  This repository vendors 20 historical module files used for automated parity verification, test benchmarking, and demonstration:
+  - **`ELYSIUM.MOD`**: Volker Tripp (*Jester / Sanity*) – Title track from the legendary Amiga demo *Elysium* (Sanity, Germany).
+  - **`stardust-memories.mod`**: Volker Tripp (*Jester / Sanity*) – Soundscape composed for Sanity's *World of Commodore 92* demo (1992).
+  - **`space_debris.mod`**: Markus Schneider (*Captain / Image*) – Iconic 1991 melodic synthesizer tracker anthem.
+  - **`beyond_music.mod`**: Markus Schneider (*Captain / Image*) – 1st place winner in The Gathering 1991 music competition (Parikkala, Finland).
+  - **`creamof.mod`** (*Cream of the Earth*): Eckart Herzog (*Romeo Knight / Red Sector Inc.*) – Historic rock/synth module from the *RSI Megademo* (1989/1990).
+  - **`tempest-acidjazz.mod`** (*Acidjazzed Evening*): Aleksi Eeben (*Tempest / Damage / Chippendales*) – 1st place winner in the Assembly 2000 (asm2k) oldskool music compo.
+  - **`jogeir_liljedahl_-_addiction.mod`**: Jogeir Liljedahl (*Noiseless*) – Classic 1992 Amiga melody.
+  - **`physical_presence.mod`**: Jogeir Liljedahl (*Virtual Dreams / Fairlight*) – Soundtrack for the landmark 1993 demo *Physical Presence*.
+  - **`street_jungle.mod`**: Antti Mikkonen (*Heatbeat / Rebels*) – High-energy breakbeat/jungle module (Kajaani, Finland).
+  - **`bananasplit.mod`**: Juha Kujanpää (*Dizzy / CNCD*) – Funk/fusion tracker groove (1993, Finland).
+  - **`aftertouch.mod`**: *Substance (Mono & Kinky)* – Atmospheric 1997 jungle/drum & bass competition tune for Digital Candy BBS.
+  - **`random_voice_-_monday.mod`**: Edvin Fladen (*Random Voice*) – Classic melodic module (April 1991, Norway).
+  - **`_1995.mod`**: *Angelwings / Apex* – Chiptune composed for Lord Lech / Humbugs (April 1995).
+  - **`_4k_introtune_.mod`**: *Bionic / Erotic* – Compact chiptune composed for the *Turnips 4k Intro* (October 1996, Gliwice, Poland).
+  - **`class09.mod`**: *Maktone* – Signature compact, crystalline Amiga tracker chiptune.
+  - **`musiklinjen.mod`**: Mats & Thomas (*Firefox & Tip / Phenomena*) – Legendary Swedish duo celebrated for Phenomena's *Enigma* and *Megademo*.
+  - **`projectx.mod`**: Remixed by *Bladswede* – Tribute remix of Allister Brimble's iconic 1992 Team17 shoot 'em up game soundtrack *Project-X*.
+  - **`hymn_to_aurora.mod`**: *Clawz / Aurora / Shamus* – Ambient melodic soundscape.
+  - **`giel.mod`**: *Giel van Dooren* – Classic European Amiga tracker composition.
+  - **`DOPE.MOD`**: Classic multi-track electronic module featuring Roland TR-808/909 percussion and sampled groove loops.
+  - Respect and gratitude to all tracker musicians whose artistry and sonic ingenuity defined early computer music culture.
 
 ---
 
