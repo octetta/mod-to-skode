@@ -48,6 +48,9 @@ Key capabilities:
 
 The interactive web UI is built with [Gleam](https://gleam.run/) and [Lustre](https://hexdocs.pm/lustre/), bundled with [Vite](https://vite.dev/), and isolated via Cross-Origin Opener / Embedder Policies (COOP/COEP) for multi-threaded WASM support.
 
+> [!NOTE]
+> **Vibe-Coded Aspirational Gleam & Lustre**: This project is an unapologetically "vibe-coded", aspirational exploration of Gleam and Lustre. While it leverages Gleam's algebraic types (`Msg` sum types, `Option`, `Result`, and product records) and Lustre's unidirectional architecture (The Elm Architecture) to run a 100% client-side WebAssembly tracker player, large portions of the converter (`converter.gleam`) were ported in algorithmic lockstep from the reference Python CLI to guarantee byte-for-byte output parity. As a result, purists (and benevolent language creators like Louis Pilfold and Hayleigh Thompson) would rightfully spot plenty of opportunities to make invalid states further unrepresentable, replace boolean flags with rich domain sum types, and refactor procedural accumulators into idiomatic pipelines!
+
 ### Features
 1. **Drag-and-Drop Loader**: Drop any `.mod` file directly onto the browser window or pick via file dialog.
 2. **Instant Demo Modules**: Includes built-in classic modules ready to test in 1 click:
