@@ -1,7 +1,13 @@
 {
   "name": "mod-to-skode",
   "version": "0.1.0",
+  "description": "Amiga MOD tracker converter and real-time playback engine in Gleam and Lustre",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/octetta/mod-to-skode.git"
+  },
   "imports": {
     "#vendor/*": "./vendor/*"
   },

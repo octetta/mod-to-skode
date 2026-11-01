@@ -1,5 +1,8 @@
 name = "mod_to_skode"
 version = "0.1.0"
+description = "Amiga MOD tracker converter and real-time playback engine in Gleam and Lustre"
+licences = ["MIT"]
+repository = { type = "github", user = "octetta", repo = "mod-to-skode" }
 target = "javascript"
 
 [dependencies]
