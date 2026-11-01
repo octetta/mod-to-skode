@@ -51,6 +51,8 @@ pub type Model {
   Model(
     engine_ready: Bool,
     is_playing: Bool,
+    is_paused: Bool,
+    current_step: Int,
     active_file: Option(ModFile),
     conversion: Option(ConversionResult),
     is_converting: Bool,
@@ -66,7 +68,12 @@ pub type Msg {
   ConvertClicked
   ConversionCompleted(Result(ConversionResult, String))
   PlayClicked
+  PauseClicked
+  ResumeClicked
   StopClicked
+  PlaybackStepChanged(step: Int, total_steps: Int)
+  PlaybackEnded
+  PreviewSampleClicked(id: Int)
   DownloadZipClicked
   ResetClicked
   TabSelected(String)

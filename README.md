@@ -54,12 +54,13 @@ The interactive web UI is built with [Gleam](https://gleam.run/) and [Lustre](ht
    - 🚀 *Space Debris* by Captain / Image (4 channels, melodic synth leads and arpeggios).
    - ⚡ *4K Intro Tune* (compact 4-channel chiptune intro).
 3. **Interactive Inspection Dashboard**:
-   - **Instruments & Samples**: Lists all 31 sample slots with byte sizes, 0..64 volume levels, finetunes, tuning offsets in cents, and loop ranges.
+   - **Instruments & Samples**: Lists all 31 sample slots with byte sizes, 0..64 volume levels, finetunes, tuning offsets in cents, loop ranges, and **interactive sample audition / preview** buttons to listen to individual 16-bit WAV samples when stopped.
    - **Generated Skode (`main.sk`)**: Full syntax-highlighted preview of the compiled Skode script.
    - **WAV Sample Blobs**: Overview of all generated 16-bit 16,574 Hz PCM samples mounted in the virtual filesystem.
-4. **WASM Transport Controls**:
-   - **Play in Skred**: Mounts samples into the Emscripten VFS and triggers native engine playback.
-   - **Stop / Panic**: Instantly silences voices (`S-1`) and resets audio dispatchers.
+4. **WASM Transport Controls & Real-Time Progress**:
+   - **Play / Pause / Resume / Stop**: Mounts samples into the Emscripten VFS and triggers native engine playback, with seamless pause/resume and automatic transport reset on song completion.
+   - **Live Step & Time Tracking**: Real-time progress bar, current step counter (`Step X / Y`), elapsed time, and total song duration.
+   - **Panic Silence**: Instantly silences all voices (`S-1`) and resets audio dispatchers.
    - **Download .ZIP**: Bundles the script and samples into an archive ready for Skode's `%z archive.zip` command.
 
 ---

@@ -4,6 +4,7 @@
 //// to Skode 0.80.0 scripts, packages them with WAV samples into a ZIP archive,
 //// and allows instant playback directly in the Skred WASM audio engine.
 
+import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
@@ -19,8 +20,9 @@ import mod_to_skode/mod_parser
 import mod_to_skode/types.{
   type ConversionResult, type Instrument, type ModFile, type Model, type Msg,
   ConversionCompleted, ConvertClicked, DownloadZipClicked, EngineStatusChanged,
-  FileDropped, LoadDemo, Model, PanicClicked, PlayClicked, ResetClicked,
-  StopClicked, TabSelected,
+  FileDropped, LoadDemo, Model, PanicClicked, PauseClicked, PlayClicked,
+  PlaybackEnded, PlaybackStepChanged, PreviewSampleClicked, ResetClicked,
+  ResumeClicked, StopClicked, TabSelected,
 }
 
 // ---------------------------------------------------------------------------
@@ -44,13 +46,29 @@ fn js_load_url_mod(
 fn js_load_and_play_skode(
   main_sk: String,
   samples: List(#(String, BitArray)),
+  total_rows: Int,
 ) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "pausePlayback")
+fn js_pause_playback() -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "resumePlayback")
+fn js_resume_playback() -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "stopPlayback")
 fn js_stop_playback() -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "panicEngine")
 fn js_panic_engine() -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "previewSample")
+fn js_preview_sample(wav: BitArray) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "registerPlaybackListener")
+fn js_register_playback_listener(
+  on_step: fn(Int, Int) -> Nil,
+  on_end: fn() -> Nil,
+) -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "downloadZip")
 fn js_download_zip(
@@ -77,6 +95,15 @@ fn register_file_drop_effect() -> Effect(Msg) {
   })
 }
 
+fn register_playback_listener_effect() -> Effect(Msg) {
+  effect.from(fn(dispatch) {
+    js_register_playback_listener(
+      fn(step, total) { dispatch(PlaybackStepChanged(step, total)) },
+      fn() { dispatch(PlaybackEnded) },
+    )
+  })
+}
+
 fn load_demo_effect(url: String, filename: String) -> Effect(Msg) {
   effect.from(fn(dispatch) {
     js_load_url_mod(url, filename, fn(name, data) {
@@ -88,8 +115,19 @@ fn load_demo_effect(url: String, filename: String) -> Effect(Msg) {
 fn play_effect(
   main_sk: String,
   samples: List(#(String, BitArray)),
+  total_rows: Int,
 ) -> Effect(Msg) {
-  effect.from(fn(_dispatch) { js_load_and_play_skode(main_sk, samples) })
+  effect.from(fn(_dispatch) {
+    js_load_and_play_skode(main_sk, samples, total_rows)
+  })
+}
+
+fn pause_effect() -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_pause_playback() })
+}
+
+fn resume_effect() -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_resume_playback() })
 }
 
 fn stop_effect() -> Effect(Msg) {
@@ -98,6 +136,10 @@ fn stop_effect() -> Effect(Msg) {
 
 fn panic_effect() -> Effect(Msg) {
   effect.from(fn(_dispatch) { js_panic_engine() })
+}
+
+fn preview_sample_effect(wav: BitArray) -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_preview_sample(wav) })
 }
 
 fn download_zip_effect(
@@ -117,6 +159,8 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
     Model(
       engine_ready: False,
       is_playing: False,
+      is_paused: False,
+      current_step: 0,
       active_file: None,
       conversion: None,
       is_converting: False,
@@ -129,6 +173,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
     effect.batch([
       init_engine_effect(),
       register_file_drop_effect(),
+      register_playback_listener_effect(),
     ])
 
   #(model, effects)
@@ -152,6 +197,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             Model(
               ..model,
               is_playing: False,
+              is_paused: False,
+              current_step: 0,
               error_message: Some(err),
               is_converting: False,
               status_text: "Parse error: " <> err,
@@ -166,6 +213,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                 Model(
                   ..model,
                   is_playing: False,
+                  is_paused: False,
+                  current_step: 0,
                   active_file: Some(mod_file),
                   error_message: Some(err),
                   is_converting: False,
@@ -179,6 +228,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                 Model(
                   ..model,
                   is_playing: False,
+                  is_paused: False,
+                  current_step: 0,
                   active_file: Some(mod_file),
                   conversion: Some(conv_res),
                   is_converting: False,
@@ -254,25 +305,111 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             Model(
               ..model,
               is_playing: True,
+              is_paused: False,
+              current_step: 0,
               status_text: "Playing in Skred WASM...",
             ),
-            play_effect(res.skode_text, res.samples),
+            play_effect(res.skode_text, res.samples, res.total_rows),
           )
         }
         None -> #(model, effect.none())
       }
     }
 
+    PauseClicked -> {
+      case model.is_playing {
+        True -> #(
+          Model(
+            ..model,
+            is_paused: True,
+            status_text: "Playback paused at step "
+              <> int.to_string(model.current_step + 1)
+              <> ".",
+          ),
+          pause_effect(),
+        )
+        False -> #(model, effect.none())
+      }
+    }
+
+    ResumeClicked -> {
+      case model.is_playing {
+        True -> #(
+          Model(..model, is_paused: False, status_text: "Playback resumed."),
+          resume_effect(),
+        )
+        False -> #(model, effect.none())
+      }
+    }
+
     StopClicked -> {
       #(
-        Model(..model, is_playing: False, status_text: "Playback stopped."),
+        Model(
+          ..model,
+          is_playing: False,
+          is_paused: False,
+          current_step: 0,
+          status_text: "Playback stopped.",
+        ),
         stop_effect(),
       )
     }
 
+    PlaybackStepChanged(step, _total) -> {
+      case model.is_playing {
+        True -> #(Model(..model, current_step: step), effect.none())
+        False -> #(model, effect.none())
+      }
+    }
+
+    PlaybackEnded -> {
+      #(
+        Model(
+          ..model,
+          is_playing: False,
+          is_paused: False,
+          current_step: 0,
+          status_text: "Playback finished.",
+        ),
+        effect.none(),
+      )
+    }
+
+    PreviewSampleClicked(id) -> {
+      case model.is_playing {
+        True -> #(model, effect.none())
+        False -> {
+          case model.conversion {
+            Some(conv) -> {
+              let target_name = "samples/inst_" <> int.to_string(id) <> ".wav"
+              case list.find(conv.samples, fn(item) { item.0 == target_name }) {
+                Ok(#(_name, wav)) -> #(
+                  Model(
+                    ..model,
+                    status_text: "Auditioning instrument #"
+                      <> int.to_string(id)
+                      <> "...",
+                  ),
+                  preview_sample_effect(wav),
+                )
+                Error(_) -> #(model, effect.none())
+              }
+            }
+            None -> #(model, effect.none())
+          }
+        }
+      }
+    }
+
     PanicClicked -> {
       #(
-        Model(..model, is_playing: False, status_text: "Engine silenced (S-1)."),
+        Model(
+          ..model,
+          is_playing: False,
+          is_paused: False,
+          current_step: 0,
+          status_text: "Engine silenced (S-1).",
+        ),
         panic_effect(),
       )
     }
@@ -297,6 +434,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           active_file: None,
           conversion: None,
           is_playing: False,
+          is_paused: False,
+          current_step: 0,
           error_message: None,
           status_text: "Ready. Drag and drop any .mod file to convert.",
         ),
@@ -313,6 +452,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         Model(
           ..model,
           is_playing: False,
+          is_paused: False,
+          current_step: 0,
           is_converting: True,
           status_text: "Downloading & converting demo " <> filename <> "...",
         ),
@@ -352,7 +493,8 @@ fn view_header(model: Model) -> Element(Msg) {
   html.header([class("app-header")], [
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
-      html.span([class("badge-version")], [text("Skred v0.80.0")]),
+      html.span([class("badge-version")], [text("v0.1.0")]),
+      html.span([class("badge-engine")], [text("Skred v0.80.0")]),
     ]),
     html.div([class("header-controls")], [
       html.div([class("engine-status")], [
@@ -549,42 +691,160 @@ fn view_dashboard(model: Model, mod_file: ModFile) -> Element(Msg) {
 }
 
 fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
-  html.div([class("transport-bar")], [
-    html.div([class("transport-buttons")], [
-      case model.is_playing {
+  let play_pause_btn = case model.is_playing {
+    False ->
+      html.button(
+        [
+          class("btn btn-success btn-lg"),
+          event.on_click(PlayClicked),
+          attribute.disabled(model.conversion == None),
+        ],
+        [text("▶ Play in Skred")],
+      )
+    True -> {
+      case model.is_paused {
         False ->
           html.button(
             [
-              class("btn btn-success btn-lg"),
-              event.on_click(PlayClicked),
-              attribute.disabled(model.conversion == None),
+              class("btn btn-warning btn-lg"),
+              event.on_click(PauseClicked),
             ],
-            [text("▶ Play in Skred")],
+            [text("⏸ Pause")],
           )
         True ->
           html.button(
             [
-              class("btn btn-warning btn-lg pulse-playing"),
-              event.on_click(StopClicked),
+              class("btn btn-success btn-lg pulse-paused"),
+              event.on_click(ResumeClicked),
             ],
-            [text("⏹ Stop")],
+            [text("▶ Resume")],
           )
-      },
+      }
+    }
+  }
+
+  let stop_btn = case model.is_playing {
+    True ->
       html.button(
         [
-          class("btn btn-primary btn-lg"),
-          event.on_click(DownloadZipClicked),
-          attribute.disabled(model.conversion == None),
+          class("btn btn-danger btn-lg"),
+          event.on_click(StopClicked),
         ],
-        [text("💾 Download .ZIP")],
-      ),
+        [text("⏹ Stop")],
+      )
+    False ->
       html.button(
-        [class("btn btn-secondary btn-lg"), event.on_click(ResetClicked)],
         [
-          text("⟲ New File"),
+          class("btn btn-secondary btn-lg"),
+          attribute.disabled(True),
         ],
-      ),
+        [text("⏹ Stop")],
+      )
+  }
+
+  let progress_section = case model.conversion {
+    Some(conv) -> {
+      let total_rows = conv.total_rows
+      let cur_step = case model.is_playing {
+        True -> int.min(model.current_step, total_rows - 1)
+        False -> 0
+      }
+      let pct = case total_rows > 0 && model.is_playing {
+        True -> {
+          let step_f = int.to_float(cur_step + 1)
+          let total_f = int.to_float(total_rows)
+          float.min(100.0, float.max(0.0, step_f /. total_f *. 100.0))
+        }
+        False -> 0.0
+      }
+      let elapsed_sec = case total_rows > 0 && model.is_playing {
+        True -> {
+          let step_f = int.to_float(cur_step + 1)
+          let total_f = int.to_float(total_rows)
+          step_f /. total_f *. conv.duration_seconds
+        }
+        False -> 0.0
+      }
+
+      let status_badge = case model.is_playing {
+        False ->
+          html.span([class("playback-status-badge badge-stopped")], [
+            text("STOPPED"),
+          ])
+        True ->
+          case model.is_paused {
+            True ->
+              html.span([class("playback-status-badge badge-paused")], [
+                text("PAUSED"),
+              ])
+            False ->
+              html.span([class("playback-status-badge badge-playing")], [
+                text("PLAYING"),
+              ])
+          }
+      }
+
+      html.div([class("playback-tracker")], [
+        html.div([class("playback-info-row")], [
+          html.div([class("step-counter")], [
+            status_badge,
+            html.span([class("step-numbers")], [
+              text(
+                "Step "
+                <> case model.is_playing {
+                  True -> int.to_string(cur_step + 1)
+                  False -> "0"
+                }
+                <> " / "
+                <> int.to_string(total_rows),
+              ),
+            ]),
+          ]),
+          html.div([class("time-counter")], [
+            text(
+              converter.format_duration(elapsed_sec)
+              <> " / "
+              <> converter.format_duration(conv.duration_seconds),
+            ),
+          ]),
+        ]),
+        html.div([class("playback-progress-track")], [
+          html.div(
+            [
+              class(case model.is_playing && !model.is_paused {
+                True -> "playback-progress-fill is-active"
+                False -> "playback-progress-fill"
+              }),
+              attribute.style("width", converter.format_float(pct, 1) <> "%"),
+            ],
+            [],
+          ),
+        ]),
+      ])
+    }
+    None -> html.div([], [])
+  }
+
+  html.div([class("transport-container")], [
+    html.div([class("transport-bar")], [
+      html.div([class("transport-buttons")], [
+        play_pause_btn,
+        stop_btn,
+        html.button(
+          [
+            class("btn btn-primary btn-lg"),
+            event.on_click(DownloadZipClicked),
+            attribute.disabled(model.conversion == None),
+          ],
+          [text("💾 Download .ZIP")],
+        ),
+        html.button(
+          [class("btn btn-secondary btn-lg"), event.on_click(ResetClicked)],
+          [text("⟲ New File")],
+        ),
+      ]),
     ]),
+    progress_section,
   ])
 }
 
@@ -611,6 +871,7 @@ fn view_metadata_bar(model: Model, mod_file: ModFile) -> Element(Msg) {
     meta_item("DURATION", duration_str),
     meta_item("LENGTH", rows_str),
     meta_item("PATTERNS", int.to_string(list.length(mod_file.patterns))),
+    meta_item("VERSION", "v0.1.0"),
   ])
 }
 
@@ -650,11 +911,11 @@ fn tab_button(
 
 fn view_tab_content(model: Model, mod_file: ModFile) -> Element(Msg) {
   case model.active_tab {
-    "info" -> view_instruments_table(mod_file.instruments)
+    "info" -> view_instruments_table(mod_file.instruments, model.is_playing)
     "skode" -> view_skode_code(model.conversion)
     "samples" -> view_samples_list(model.conversion)
     "embed" -> view_embed_guide(model, mod_file)
-    _ -> view_instruments_table(mod_file.instruments)
+    _ -> view_instruments_table(mod_file.instruments, model.is_playing)
   }
 }
 
@@ -747,12 +1008,16 @@ fn embed_step_card(
   ])
 }
 
-fn view_instruments_table(instruments: List(Instrument)) -> Element(Msg) {
+fn view_instruments_table(
+  instruments: List(Instrument),
+  is_playing: Bool,
+) -> Element(Msg) {
   html.div([class("table-container")], [
     html.table([class("tracker-table")], [
       html.thead([], [
         html.tr([], [
           html.th([], [text("#")]),
+          html.th([], [text("Audition")]),
           html.th([], [text("Sample Name")]),
           html.th([], [text("Length (bytes)")]),
           html.th([], [text("Volume (0..64)")]),
@@ -760,12 +1025,15 @@ fn view_instruments_table(instruments: List(Instrument)) -> Element(Msg) {
           html.th([], [text("Loop")]),
         ]),
       ]),
-      html.tbody([], list.map(instruments, view_instrument_row)),
+      html.tbody(
+        [],
+        list.map(instruments, fn(ins) { view_instrument_row(ins, is_playing) }),
+      ),
     ]),
   ])
 }
 
-fn view_instrument_row(ins: Instrument) -> Element(Msg) {
+fn view_instrument_row(ins: Instrument, is_playing: Bool) -> Element(Msg) {
   let id_str = case ins.id < 10 {
     True -> "0" <> int.to_string(ins.id)
     False -> int.to_string(ins.id)
@@ -778,6 +1046,23 @@ fn view_instrument_row(ins: Instrument) -> Element(Msg) {
     False -> "None"
   }
 
+  let audition_elem = case ins.len > 2 {
+    True ->
+      html.button(
+        [
+          class("btn btn-secondary btn-sm audition-btn"),
+          event.on_click(PreviewSampleClicked(ins.id)),
+          attribute.disabled(is_playing),
+          attribute.title(case is_playing {
+            True -> "Preview disabled while playing"
+            False -> "Preview instrument #" <> int.to_string(ins.id)
+          }),
+        ],
+        [text("🔊 Play")],
+      )
+    False -> html.span([class("audition-empty")], [text("-")])
+  }
+
   html.tr(
     [
       class(case ins.len > 2 {
@@ -787,6 +1072,7 @@ fn view_instrument_row(ins: Instrument) -> Element(Msg) {
     ],
     [
       html.td([class("td-id")], [text(id_str)]),
+      html.td([class("td-audition")], [audition_elem]),
       html.td([class("td-name")], [text(ins.name)]),
       html.td([], [text(int.to_string(ins.len))]),
       html.td([], [text(int.to_string(ins.vol))]),
@@ -875,6 +1161,8 @@ fn view_footer(model: Model) -> Element(Msg) {
   html.footer([class("app-footer")], [
     html.span([class("status-message")], [text(model.status_text)]),
     html.div([class("footer-links")], [
+      html.span([class("version-tag")], [text("mod-to-skode v0.1.0")]),
+      html.span([class("footer-separator")], [text("·")]),
       html.a(
         [
           class("footer-link"),
@@ -885,7 +1173,7 @@ fn view_footer(model: Model) -> Element(Msg) {
         [text("The Mod Archive ↗")],
       ),
       html.span([class("footer-separator")], [text("·")]),
-      html.span([], [text("MOD-to-Skode · Octetta")]),
+      html.span([], [text("Skred v0.80.0")]),
     ]),
   ])
 }

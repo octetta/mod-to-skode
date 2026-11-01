@@ -19,6 +19,15 @@ let wasmEventsBuffer = null;
 const EVENT_SIZE = 72;
 const MAX_EVENTS_BATCH = 64;
 
+// Playback Tracking & Audition State
+let playbackStepCallback = null;
+let playbackEndedCallback = null;
+let activeSongTotalSteps = 0;
+let isPlaybackActive = false;
+let isPlaybackPaused = false;
+let lastReportedStep = -1;
+let currentPreviewAudio = null;
+
 // ---------------------------------------------------------------------------
 // 1. Skred WASM Engine Initialization & Stdout Hooking
 // ---------------------------------------------------------------------------
@@ -217,7 +226,6 @@ function startWasmEventPump(M) {
 
   function pump() {
     if (
-      currentEventSubscription &&
       M &&
       typeof M._skred_control_event_poll === "function" &&
       wasmEventsBuffer &&
@@ -241,8 +249,34 @@ function startWasmEventPump(M) {
               vals.push(view.getFloat32(base + 24 + j * 4, true));
             }
             events.push({ t, seq, v, p, s, id, vals });
+
+            // Real-time Step Tracking: event type 9 (SKRED_CONTROL_EVENT_PATTERN_STEP)
+            if (isPlaybackActive && t === 9 && (p === 127 || p === 0)) {
+              if (s !== lastReportedStep) {
+                lastReportedStep = s;
+                if (playbackStepCallback) {
+                  playbackStepCallback(s, activeSongTotalSteps);
+                }
+              }
+            }
+
+            // Song Completion: event 4 (SKRED_CONTROL_EVENT_USER with id 127) or event 6 (SKRED_CONTROL_EVENT_PATTERN_END)
+            if (
+              isPlaybackActive &&
+              ((t === 4 && (id === 127 || seq === 127)) ||
+                (t === 6 && (p === 127 || p === 0)))
+            ) {
+              isPlaybackActive = false;
+              isPlaybackPaused = false;
+              lastReportedStep = -1;
+              if (playbackEndedCallback) {
+                playbackEndedCallback();
+              }
+            }
           }
-          currentEventSubscription(events);
+          if (currentEventSubscription) {
+            currentEventSubscription(events);
+          }
         }
       } catch (err) {
         console.error("[mod-to-skode] Event pump error:", err);
@@ -390,8 +424,27 @@ export function downloadZip(skodeText, samplesList, filename) {
   });
 }
 
-export function loadAndPlaySkode(mainSkText, samplesList) {
+export function registerPlaybackListener(onStep, onEnd) {
+  playbackStepCallback = onStep;
+  playbackEndedCallback = onEnd;
+}
+
+export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
+  activeSongTotalSteps = typeof totalSteps === "number" ? totalSteps : 0;
+  isPlaybackActive = true;
+  isPlaybackPaused = false;
+  lastReportedStep = -1;
+
+  if (currentPreviewAudio) {
+    try {
+      currentPreviewAudio.pause();
+      currentPreviewAudio.currentTime = 0;
+    } catch (e) {}
+    currentPreviewAudio = null;
+  }
+
   ensureEngineRunning();
+  ensureAudioContext();
   removeAudioUnlockListeners();
   audioUnlocked = true;
 
@@ -423,8 +476,9 @@ export function loadAndPlaySkode(mainSkText, samplesList) {
       executeSkredCommand("Y-1");
       executeSkredCommand("S-1");
 
-      // Mount zip via Skode VFS (%z) and trigger playback
+      // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 127 & 0
       executeSkredCommand("%z [song.zip];");
+      executeSkredCommand("y127 yc1; y0 yc1;");
       executeSkredCommand("play");
     } catch (err) {
       console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
@@ -432,11 +486,72 @@ export function loadAndPlaySkode(mainSkText, samplesList) {
   });
 }
 
+export function pausePlayback() {
+  if (!isPlaybackActive) return;
+  isPlaybackPaused = true;
+  const M = win.Module;
+  if (M && M.audioContext && M.audioContext.state === "running") {
+    M.audioContext.suspend().catch(() => {});
+  }
+  if (win.AL && win.AL.currentCtx && win.AL.currentCtx.audioCtx && win.AL.currentCtx.audioCtx.state === "running") {
+    win.AL.currentCtx.audioCtx.suspend().catch(() => {});
+  }
+  if (win.miniaudio && Array.isArray(win.miniaudio.devices)) {
+    for (const dev of win.miniaudio.devices) {
+      if (dev && dev.webaudio && dev.webaudio.state === "running") {
+        dev.webaudio.suspend().catch(() => {});
+      }
+    }
+  }
+}
+
+export function resumePlayback() {
+  if (!isPlaybackActive) return;
+  isPlaybackPaused = false;
+  ensureAudioContext();
+}
+
 export function stopPlayback() {
+  isPlaybackActive = false;
+  isPlaybackPaused = false;
+  lastReportedStep = -1;
+  ensureAudioContext();
   executeSkredCommand("stop");
   executeSkredCommand("%zu");
   executeSkredCommand("Y-1");
   executeSkredCommand("S-1");
+}
+
+export function previewSample(rawBitArray) {
+  if (isPlaybackActive && !isPlaybackPaused) {
+    console.warn("[mod-to-skode] Cannot preview sample while song is actively playing.");
+    return;
+  }
+  if (currentPreviewAudio) {
+    try {
+      currentPreviewAudio.pause();
+      currentPreviewAudio.currentTime = 0;
+    } catch (e) {}
+    currentPreviewAudio = null;
+  }
+  try {
+    const u8 = rawBitArray.rawBuffer || rawBitArray.buffer || new Uint8Array(rawBitArray);
+    const blob = new Blob([u8], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentPreviewAudio = audio;
+    audio.play().catch((err) => {
+      console.warn("[mod-to-skode] Sample preview play error:", err);
+    });
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if (currentPreviewAudio === audio) {
+        currentPreviewAudio = null;
+      }
+    };
+  } catch (err) {
+    console.error("[mod-to-skode] previewSample failed:", err);
+  }
 }
 
 export function panicEngine() {
