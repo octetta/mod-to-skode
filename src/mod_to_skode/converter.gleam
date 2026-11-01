@@ -626,7 +626,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
         |> dict.from_list
 
       // Generate pattern rows
-      let #(pattern_texts, _final_chans, total_duration) =
+      let #(pattern_texts, _final_chans, total_duration, step_times) =
         generate_all_rows(
           unrolled_rows,
           0,
@@ -637,6 +637,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
           inst_map,
           dict.new(),
           0.0,
+          dict.new(),
         )
 
       // Natural song end step
@@ -776,6 +777,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
         initial_tempo: initial_tempo,
         initial_speed: initial_speed,
         duration_seconds: total_duration,
+        step_times: step_times,
       ))
     }
   }
@@ -812,12 +814,15 @@ fn generate_all_rows(
   inst_map: Dict(Int, Instrument),
   pat_texts: Dict(Int, String),
   duration_acc: Float,
-) -> #(Dict(Int, String), Dict(Int, ChannelState), Float) {
+  step_times: Dict(Int, Float),
+) -> #(Dict(Int, String), Dict(Int, ChannelState), Float, Dict(Int, Float)) {
   case rows {
-    [] -> #(pat_texts, chans, duration_acc)
+    [] -> #(pat_texts, chans, duration_acc, step_times)
     [u_row, ..rest_rows] -> {
       let notes = u_row.notes
       let is_delay = u_row.is_pat_delay_repeat
+
+      let updated_step_times = dict.insert(step_times, global_idx, duration_acc)
 
       // Scan row for speed/tempo changes
       let #(row_speed, row_tempo) =
@@ -881,6 +886,7 @@ fn generate_all_rows(
         inst_map,
         final_pat_texts,
         duration_acc +. row_duration,
+        updated_step_times,
       )
     }
   }

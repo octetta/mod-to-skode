@@ -4,6 +4,7 @@
 //// to Skode 0.80.0 scripts, packages them with WAV samples into a ZIP archive,
 //// and allows instant playback directly in the Skred WASM audio engine.
 
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
@@ -749,19 +750,21 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
         True -> int.min(model.current_step, total_rows - 1)
         False -> 0
       }
-      let pct = case total_rows > 0 && model.is_playing {
+      let elapsed_sec = case model.is_playing {
         True -> {
-          let step_f = int.to_float(cur_step + 1)
-          let total_f = int.to_float(total_rows)
-          float.min(100.0, float.max(0.0, step_f /. total_f *. 100.0))
+          case dict.get(conv.step_times, cur_step) {
+            Ok(t) -> t
+            Error(_) -> conv.duration_seconds
+          }
         }
         False -> 0.0
       }
-      let elapsed_sec = case total_rows > 0 && model.is_playing {
+      let pct = case conv.duration_seconds >. 0.0 && model.is_playing {
         True -> {
-          let step_f = int.to_float(cur_step + 1)
-          let total_f = int.to_float(total_rows)
-          step_f /. total_f *. conv.duration_seconds
+          float.min(
+            100.0,
+            float.max(0.0, elapsed_sec /. conv.duration_seconds *. 100.0),
+          )
         }
         False -> 0.0
       }

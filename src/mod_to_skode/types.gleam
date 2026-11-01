@@ -1,5 +1,6 @@
 //// Types for mod_to_skode converter and Lustre web interface
 
+import gleam/dict.{type Dict}
 import gleam/option.{type Option}
 
 pub type Instrument {
@@ -44,6 +45,7 @@ pub type ConversionResult {
     initial_tempo: Int,
     initial_speed: Int,
     duration_seconds: Float,
+    step_times: Dict(Int, Float),
   )
 }
 

@@ -238,21 +238,26 @@ function startWasmEventPump(M) {
           const view = new DataView(M.HEAPU8.buffer, wasmEventsBuffer, count * EVENT_SIZE);
           for (let i = 0; i < count; i++) {
             const base = i * EVENT_SIZE;
-            const t = view.getInt32(base, true);
-            const seq = view.getInt32(base + 4, true);
-            const v = view.getInt32(base + 8, true);
-            const p = view.getInt32(base + 12, true);
-            const s = view.getInt32(base + 16, true);
-            const id = view.getInt32(base + 20, true);
-            const vals = [];
-            for (let j = 0; j < 8; j++) {
-              vals.push(view.getFloat32(base + 24 + j * 4, true));
-            }
-            events.push({ t, seq, v, p, s, id, vals });
+            const t = view.getUint32(base + 0, true);
+            const opcode = view.getUint32(base + 4, true);
+            const sample = Number(view.getBigUint64(base + 8, true));
+            const seq = Number(view.getBigUint64(base + 16, true));
+            const v = view.getInt32(base + 24, true);
+            const p = view.getInt32(base + 28, true);
+            const s = view.getInt32(base + 32, true);
+            const tag = view.getInt32(base + 36, true);
+            const id = view.getInt32(base + 40, true);
+            const value_count = view.getUint32(base + 44, true);
+            const vals = [
+              view.getFloat64(base + 48, true),
+              view.getFloat64(base + 56, true),
+              view.getFloat64(base + 64, true),
+            ];
+            events.push({ t, opcode, sample, seq, v, p, s, tag, id, value_count, vals });
 
-            // Real-time Step Tracking: event type 9 (SKRED_CONTROL_EVENT_PATTERN_STEP)
-            if (isPlaybackActive && t === 9 && (p === 127 || p === 0)) {
-              if (s !== lastReportedStep) {
+            // Real-time Step Tracking: event type 9 (SKRED_CONTROL_EVENT_PATTERN_STEP) on pattern 0
+            if (isPlaybackActive && t === 9 && p === 0) {
+              if (s !== lastReportedStep && s >= 0) {
                 lastReportedStep = s;
                 if (playbackStepCallback) {
                   playbackStepCallback(s, activeSongTotalSteps);
@@ -260,11 +265,10 @@ function startWasmEventPump(M) {
               }
             }
 
-            // Song Completion: event 4 (SKRED_CONTROL_EVENT_USER with id 127) or event 6 (SKRED_CONTROL_EVENT_PATTERN_END)
+            // Song Completion: event 4 (SKRED_CONTROL_EVENT_USER with id 127) or event 6 (SKRED_CONTROL_EVENT_PATTERN_END on pattern 0)
             if (
               isPlaybackActive &&
-              ((t === 4 && (id === 127 || seq === 127)) ||
-                (t === 6 && (p === 127 || p === 0)))
+              ((t === 4 && id === 127) || (t === 6 && p === 0))
             ) {
               isPlaybackActive = false;
               isPlaybackPaused = false;
@@ -476,9 +480,9 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
       executeSkredCommand("Y-1");
       executeSkredCommand("S-1");
 
-      // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 127 & 0
+      // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
       executeSkredCommand("%z [song.zip];");
-      executeSkredCommand("y127 yc1; y0 yc1;");
+      executeSkredCommand("y0 yc1;");
       executeSkredCommand("play");
     } catch (err) {
       console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
