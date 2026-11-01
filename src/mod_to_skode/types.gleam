@@ -43,6 +43,7 @@ pub type ConversionResult {
     total_rows: Int,
     initial_tempo: Int,
     initial_speed: Int,
+    duration_seconds: Float,
   )
 }
 

@@ -60,6 +60,21 @@ pub fn format_cents(cents: Float) -> String {
   }
 }
 
+pub fn format_duration(seconds: Float) -> String {
+  let total_secs = float.truncate(seconds)
+  let mins = total_secs / 60
+  let secs = total_secs % 60
+  let mins_str = case mins < 10 {
+    True -> "0" <> int.to_string(mins)
+    False -> int.to_string(mins)
+  }
+  let secs_str = case secs < 10 {
+    True -> "0" <> int.to_string(secs)
+    False -> int.to_string(secs)
+  }
+  mins_str <> ":" <> secs_str
+}
+
 pub type UnrolledRow {
   UnrolledRow(
     seq_idx: Int,
@@ -611,7 +626,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
         |> dict.from_list
 
       // Generate pattern rows
-      let #(pattern_texts, _final_chans) =
+      let #(pattern_texts, _final_chans, total_duration) =
         generate_all_rows(
           unrolled_rows,
           0,
@@ -621,6 +636,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
           initial_channels,
           inst_map,
           dict.new(),
+          0.0,
         )
 
       // Natural song end step
@@ -759,6 +775,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
         total_rows: total_rows,
         initial_tempo: initial_tempo,
         initial_speed: initial_speed,
+        duration_seconds: total_duration,
       ))
     }
   }
@@ -794,9 +811,10 @@ fn generate_all_rows(
   chans: Dict(Int, ChannelState),
   inst_map: Dict(Int, Instrument),
   pat_texts: Dict(Int, String),
-) -> #(Dict(Int, String), Dict(Int, ChannelState)) {
+  duration_acc: Float,
+) -> #(Dict(Int, String), Dict(Int, ChannelState), Float) {
   case rows {
-    [] -> #(pat_texts, chans)
+    [] -> #(pat_texts, chans, duration_acc)
     [u_row, ..rest_rows] -> {
       let notes = u_row.notes
       let is_delay = u_row.is_pat_delay_repeat
@@ -806,6 +824,9 @@ fn generate_all_rows(
         scan_speed_tempo(notes, None, None, global_idx)
       let new_speed = option.unwrap(row_speed, cur_speed)
       let new_tempo = option.unwrap(row_tempo, cur_tempo)
+
+      let row_duration =
+        int.to_float(new_speed) *. 2.5 /. int.to_float(new_tempo)
 
       // Process each channel 0..nch-1
       let #(updated_chans, ch_cmds_list) =
@@ -859,6 +880,7 @@ fn generate_all_rows(
         updated_chans,
         inst_map,
         final_pat_texts,
+        duration_acc +. row_duration,
       )
     }
   }

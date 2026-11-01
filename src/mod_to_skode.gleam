@@ -186,6 +186,8 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                   status_text: "Successfully converted "
                     <> filename
                     <> " ("
+                    <> converter.format_duration(conv_res.duration_seconds)
+                    <> ", "
                     <> int.to_string(conv_res.total_rows)
                     <> " rows).",
                 ),
@@ -586,18 +588,29 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
   ])
 }
 
-fn view_metadata_bar(_model: Model, mod_file: ModFile) -> Element(Msg) {
+fn view_metadata_bar(model: Model, mod_file: ModFile) -> Element(Msg) {
   let clean_title = case string.trim(mod_file.title) {
     "" -> "(Untitled)"
     t -> t
+  }
+
+  let duration_str = case model.conversion {
+    Some(conv) -> converter.format_duration(conv.duration_seconds)
+    None -> "--:--"
+  }
+
+  let rows_str = case model.conversion {
+    Some(conv) -> int.to_string(conv.total_rows) <> " rows"
+    None -> int.to_string(mod_file.song_length) <> " patterns"
   }
 
   html.div([class("meta-bar")], [
     meta_item("TITLE", clean_title),
     meta_item("FILE", mod_file.filename),
     meta_item("CHANNELS", int.to_string(mod_file.num_channels) <> " CH"),
-    meta_item("SONG LENGTH", int.to_string(mod_file.song_length) <> " patterns"),
-    meta_item("PATTERNS IN FILE", int.to_string(list.length(mod_file.patterns))),
+    meta_item("DURATION", duration_str),
+    meta_item("LENGTH", rows_str),
+    meta_item("PATTERNS", int.to_string(list.length(mod_file.patterns))),
   ])
 }
 

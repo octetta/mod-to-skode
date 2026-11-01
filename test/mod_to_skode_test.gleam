@@ -96,6 +96,7 @@ pub fn parse_synthetic_mod_test() {
   let assert Ok(res) = conversion
   res.num_channels |> should.equal(4)
   res.total_rows |> should.equal(64)
+  { res.duration_seconds >. 0.0 } |> should.be_true
 }
 
 fn list_map(items: List(a), f: fn(a) -> b) -> List(b) {

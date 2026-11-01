@@ -379,6 +379,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
             for sk_idx in range(num_skode_patterns):
                 pattern_text[(c, sk_idx)] = ""
 
+        total_duration_sec = 0.0
         for global_row_idx, (seq_idx, p_idx, r, row, is_pat_delay_repeat) in enumerate(unrolled_rows):
             sk_pattern_idx = global_row_idx // skode_steps
             abs_r = global_row_idx % skode_steps
@@ -398,6 +399,8 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                 current_speed = row_speed_cmd
             if row_tempo_cmd is not None:
                 current_tempo = row_tempo_cmd
+
+            total_duration_sec += current_speed * (2.5 / current_tempo)
 
             for c in range(nch):
                 note, inst, effect, param, period = row[c]
@@ -931,11 +934,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
                 samp_offset += length
             print("Extracted samples to samples/ directory", file=sys.stderr)
 
-            
-
-
-
-
+        return total_duration_sec
 
 if __name__ == '__main__':
     import argparse
@@ -949,5 +948,9 @@ if __name__ == '__main__':
     parser.add_argument("--max-channels", type=int, default=0, help="Convert only the first N channels (0 = all channels in the file)")
     parser.add_argument("--max-steps", type=int, default=0, help="Max steps per Skode pattern (0 = unlimited). Use 128 for older pulp versions.")
     args = parser.parse_args()
-    convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps, loop=args.loop, max_channels=args.max_channels)
+    dur = convert_mod(args.filename, out_file=args.output, compress_blank=args.compress, extract=args.extract, dedupe=args.dedupe, max_steps=args.max_steps, loop=args.loop, max_channels=args.max_channels)
+    if args.output:
+        mins = int(dur // 60)
+        secs = int(dur % 60)
+        print(f"Duration: {mins:02d}:{secs:02d} ({dur:.2f}s)", file=sys.stderr)
 
