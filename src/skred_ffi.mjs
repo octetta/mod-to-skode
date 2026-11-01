@@ -339,10 +339,10 @@ export function createZipArchive(skodeText, samplesList, callback) {
   zip(zipEntries, (err, data) => {
     if (err) {
       console.error("[mod-to-skode] Zip generation failed:", err);
-      callback(null);
+      callback(null, null);
     } else {
       const blob = new Blob([data], { type: "application/zip" });
-      callback(blob);
+      callback(blob, data);
     }
   });
 }
@@ -377,32 +377,25 @@ export function loadAndPlaySkode(mainSkText, samplesList) {
     return;
   }
 
-  try {
-    try { M.FS.mkdir("/samples"); } catch (e) {}
-    try { M.FS.mkdir("samples"); } catch (e) {}
-
-    // Mount all samples in Emscripten VFS
-    for (const item of samplesList) {
-      const path = item[0];
-      const bitArr = item[1];
-      const u8 = bitArr.rawBuffer || bitArr.buffer || new Uint8Array(bitArr);
-      try { M.FS.writeFile("/" + path, u8); } catch (e) {}
-      try { M.FS.writeFile(path, u8); } catch (e) {}
+  createZipArchive(mainSkText, samplesList, (_blob, zipData) => {
+    if (!zipData) {
+      console.error("[mod-to-skode] Failed to build zip for playback.");
+      return;
     }
 
-    // Mount main.sk
-    const enc = new TextEncoder();
-    const skBytes = enc.encode(mainSkText);
-    try { M.FS.writeFile("/main.sk", skBytes); } catch (e) {}
-    try { M.FS.writeFile("main.sk", skBytes); } catch (e) {}
+    try {
+      try { M.FS.writeFile("/song.zip", zipData); } catch (e) {}
+      try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
-    // Reset voices, load script, trigger playback
-    executeSkredCommand("S-1");
-    executeSkredCommand("[main.sk] /ls");
-    executeSkredCommand("play");
-  } catch (err) {
-    console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
-  }
+      // Reset voices, unmount any previous VFS, mount zip via Skode VFS, trigger playback
+      executeSkredCommand("S-1");
+      executeSkredCommand("%zu");
+      executeSkredCommand("%z [song.zip];");
+      executeSkredCommand("play");
+    } catch (err) {
+      console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
+    }
+  });
 }
 
 export function stopPlayback() {
