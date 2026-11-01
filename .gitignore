@@ -17,6 +17,9 @@ mini-skred-history.txt
 /.vendor
 /bin
 
+# Generated archive files
+*.zip
+
 # Temporary files
 *.swp
 *~

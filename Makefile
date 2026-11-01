@@ -163,7 +163,7 @@ install: ELYSIUM.zip
 
 clean:
 	@echo "==> Cleaning build artifacts..."
-	rm -rf build dist dev erl_crash.dump tmp bin
+	rm -rf build dist dev erl_crash.dump tmp bin *.zip
 
 distclean: clean
 	@echo "==> Removing vendored QuickJS..."
