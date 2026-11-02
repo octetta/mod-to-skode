@@ -49,6 +49,16 @@ pub type ConversionResult {
   )
 }
 
+pub type ModArchiveInfo {
+  ModArchiveInfo(id: Int, title: String, artist: String)
+}
+
+pub type StereoMode {
+  StereoHeadphone
+  StereoAmiga
+  StereoMono
+}
+
 pub type Model {
   Model(
     engine_ready: Bool,
@@ -61,6 +71,9 @@ pub type Model {
     error_message: Option(String),
     status_text: String,
     active_tab: String,
+    modarchive_info: Option(ModArchiveInfo),
+    stereo_mode: StereoMode,
+    master_volume: Int,
   )
 }
 
@@ -81,4 +94,16 @@ pub type Msg {
   TabSelected(String)
   PanicClicked
   LoadDemo(url: String, filename: String)
+  RandomModArchiveClicked
+  ModArchiveFetchStarted(title: String, artist: String, id: Int)
+  ModArchiveLoaded(
+    filename: String,
+    data: BitArray,
+    id: Int,
+    title: String,
+    artist: String,
+  )
+  ModArchiveFetchFailed(String)
+  StereoModeChanged(StereoMode)
+  MasterVolumeChanged(Int)
 }

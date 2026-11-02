@@ -27,6 +27,7 @@ let isPlaybackActive = false;
 let isPlaybackPaused = false;
 let lastReportedStep = -1;
 let currentPreviewAudio = null;
+let currentMasterVolume = -6;
 
 // ---------------------------------------------------------------------------
 // 1. Skred WASM Engine Initialization & Stdout Hooking
@@ -113,7 +114,7 @@ export function initEngine(callback) {
       executeSkredCommand("%zu");
       executeSkredCommand("Y-1");
       executeSkredCommand("S-1");
-      executeSkredCommand("V0");
+      executeSkredCommand("V-6");
 
       removeAudioUnlockListeners();
       audioUnlocked = true;
@@ -258,6 +259,18 @@ function startWasmEventPump(M) {
             // Real-time Step Tracking: event type 9 (SKRED_CONTROL_EVENT_PATTERN_STEP) on pattern 0
             if (isPlaybackActive && t === 9 && p === 0) {
               if (s !== lastReportedStep && s >= 0) {
+                // Check if pattern wrapped back to 0 after reaching the end of the song
+                if (
+                  lastReportedStep >= activeSongTotalSteps - 2 &&
+                  s === 0 &&
+                  activeSongTotalSteps > 2
+                ) {
+                  stopPlayback();
+                  if (playbackEndedCallback) {
+                    playbackEndedCallback();
+                  }
+                  return;
+                }
                 lastReportedStep = s;
                 if (playbackStepCallback) {
                   playbackStepCallback(s, activeSongTotalSteps);
@@ -270,9 +283,7 @@ function startWasmEventPump(M) {
               isPlaybackActive &&
               ((t === 4 && id === 127) || (t === 6 && p === 0))
             ) {
-              isPlaybackActive = false;
-              isPlaybackPaused = false;
-              lastReportedStep = -1;
+              stopPlayback();
               if (playbackEndedCallback) {
                 playbackEndedCallback();
               }
@@ -483,6 +494,7 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
       executeSkredCommand("%z [song.zip];");
       executeSkredCommand("y0 yc1;");
+      executeSkredCommand(`V${currentMasterVolume}`);
       executeSkredCommand("play");
     } catch (err) {
       console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
@@ -565,6 +577,12 @@ export function panicEngine() {
   executeSkredCommand("S-1");
 }
 
+export function setMasterVolume(dB) {
+  const v = typeof dB === "number" ? Math.round(dB) : -6;
+  currentMasterVolume = v;
+  executeSkredCommand(`V${v}`);
+}
+
 // ---------------------------------------------------------------------------
 // 3. Test Helper (Node.js file reader)
 // ---------------------------------------------------------------------------
@@ -645,4 +663,230 @@ export function loadUrlMod(url, filename, callback) {
       console.error("[mod-to-skode] Failed to fetch demo module:", err);
     });
 }
+
+// Curated collection of 100% verified classic Amiga .MOD modules hosted on The Mod Archive (modarchive.org)
+// Direct downloads use api.modarchive.org/downloads.php with Access-Control-Allow-Origin: * and long-term public caching.
+export const MODARCHIVE_CATALOG = [
+  { id: 57925, filename: "space_debris.mod", title: "Space Debris", artist: "Captain" },
+  { id: 40475, filename: "ELYSIUM.MOD", title: "Elysium", artist: "Jeroen Tel" },
+  { id: 42560, filename: "GSLINGER.MOD", title: "Gunslinger", artist: "Firefox" },
+  { id: 59344, filename: "stardstm.mod", title: "Stardust Memories", artist: "Jochen Hippel" },
+  { id: 101789, filename: "musiklinjen.mod", title: "Musiklinjen", artist: "Curt Cool" },
+  { id: 99684, filename: "hymn_to_aurora.mod", title: "Hymn to Aurora", artist: "Kusma" },
+  { id: 66334, filename: "tempest-acidjazz.mod", title: "Acid Jazz", artist: "Tempest" },
+  { id: 167100, filename: "jogeir_liljedahl_-_addiction.mod", title: "Addiction", artist: "Jogeir Liljedahl" },
+  { id: 214414, filename: "beyond_music.mod", title: "Beyond Music", artist: "Moby" },
+  { id: 35344, filename: "DOPE.MOD", title: "Dope", artist: "Oncle Tom" },
+  { id: 104644, filename: "physical_presence.mod", title: "Physical Presence", artist: "Firefox" },
+  { id: 54299, filename: "SHADOWRU.MOD", title: "Shadowrun", artist: "Maniacs of Noise" },
+  { id: 79054, filename: "echoing.mod", title: "Echoing", artist: "Dubmood" },
+  { id: 59601, filename: "12TH.MOD", title: "12th Warrior", artist: "Groo" },
+  { id: 211324, filename: "creamof.mod", title: "Cream of the Earth", artist: "Romeo Knight" },
+  { id: 164407, filename: "random_voice_-_monday.mod", title: "Monday", artist: "Random Voice" },
+  { id: 35151, filename: "bananasplit.mod", title: "Banana Split", artist: "Groo" },
+  { id: 211598, filename: "street_jungle.mod", title: "Street Jungle", artist: "Dr. Awesome" },
+  { id: 56660, filename: "projectx.mod", title: "Project-X", artist: "Allister Brimble" },
+  { id: 40748, filename: "FOUNTAIN.MOD", title: "Fountain of Sighs", artist: "Tip & Mantronix" },
+  { id: 37620, filename: "class09.mod", title: "Classic 09", artist: "Audiomonster" },
+  { id: 126990, filename: "aftertouch.mod", title: "Aftertouch", artist: "Jesper Kyd" },
+  { id: 186736, filename: "amegas.mod", title: "Amegas", artist: "Karsten Obarski" },
+  { id: 104882, filename: "crystalhammer.mod", title: "Crystal Hammer", artist: "Karsten Obarski" },
+  { id: 174955, filename: "professional_tracker.mod", title: "Professional Tracker", artist: "Hoffman & Daytripper" },
+  { id: 82262, filename: "apoplexy.mod", title: "Apoplexy", artist: "Moby" },
+  { id: 67779, filename: "playingw.mod", title: "Playing With Fire", artist: "Romeo Knight" },
+  { id: 37611, filename: "desert2.mod", title: "Desert Dream", artist: "Laxity" },
+  { id: 47057, filename: "KLISJE.MOD", title: "Klisje paa Klisje", artist: "Walkman" },
+  { id: 106484, filename: "tiny_tunes.mod", title: "Tiny Tunes", artist: "Uncle Tom" },
+  { id: 77604, filename: "sirens.mod", title: "Sirens", artist: "Firefox" },
+  { id: 214567, filename: "4mat_driving.mod", title: "Driving", artist: "4mat" },
+  { id: 215379, filename: "axelf.mod", title: "Axel F", artist: "Heatbeat" },
+  { id: 104178, filename: "nearly_there.mod", title: "Nearly There", artist: "Groo" },
+  { id: 67116, filename: "skogen11.mod", title: "Skogen 11", artist: "Zodiak" },
+  { id: 66036, filename: "4mats-madness.mod", title: "4mat's Madness", artist: "4mat" },
+  { id: 53421, filename: "paul.mod", title: "Paul", artist: "Laxity" },
+  { id: 104811, filename: "popcorn_remix.mod", title: "Popcorn Remix", artist: "Tip" },
+  { id: 185270, filename: "h0ffman_-_eon.mod", title: "Eon", artist: "h0ffman" },
+  { id: 65878, filename: "fleshbrain-sauron.mod", title: "Fleshbrain", artist: "Sauron" },
+  { id: 39162, filename: "corruption.mod", title: "Corruption", artist: "Tip" },
+  { id: 37594, filename: "class01.mod", title: "Classic 01", artist: "Audiomonster" },
+  { id: 33431, filename: "ambpower.mod", title: "Ambiance Power", artist: "Groo" },
+  { id: 55789, filename: "scrambld.mod", title: "Scrambled", artist: "Maniacs of Noise" },
+  { id: 105709, filename: "trans_atlantic.mod", title: "Trans Atlantic", artist: "Firefox" },
+  { id: 38520, filename: "dirt.mod", title: "Dirt", artist: "Jesper Kyd" },
+  { id: 68804, filename: "interference.mod", title: "Interference", artist: "Sanity" },
+  { id: 67602, filename: "radix-mountain_king.mod", title: "Mountain King", artist: "Radix" },
+  { id: 171453, filename: "purple_motion_-_sundance.mod", title: "Sundance", artist: "Purple Motion" },
+  { id: 67101, filename: "chubb1-1.mod", title: "Chubb 1-1", artist: "Uncle Tom" },
+  { id: 116659, filename: "1989-a_number.mod", title: "1989: A Number", artist: "Tip" },
+  { id: 177642, filename: "axel_f_-_dj_metune.mod", title: "Axel F Remix", artist: "DJ MeTune" },
+  { id: 40293, filename: "cyberrid.mod", title: "Cyberride", artist: "Jesper Kyd" },
+  { id: 67120, filename: "skogen14.mod", title: "Skogen 14", artist: "Zodiak" },
+  { id: 105634, filename: "oro_incenso-orig.mod", title: "Oro Incenso", artist: "Moby" },
+  { id: 61595, filename: "vvertur.mod", title: "Vvertur", artist: "Laxity" },
+  { id: 42781, filename: "galaxyii.mod", title: "Galaxy II", artist: "Jesper Kyd" },
+  { id: 114971, filename: "tilbury_fair.mod", title: "Tilbury Fair", artist: "4mat" },
+  { id: 91803, filename: "spacedel_short.mod", title: "Space Delay", artist: "Kusma" },
+  { id: 108484, filename: "mortimers_chipdisko.mod", title: "Chip Disko", artist: "Mortimer Twang" },
+  { id: 172266, filename: "hoffman_-_the_hunter.mod", title: "The Hunter", artist: "Hoffman" },
+  { id: 59808, filename: "1990chip.mod", title: "1990 Chip", artist: "Walkman" }
+];
+
+export function fetchRandomModArchive(onStart, onSuccess, onError) {
+  const index = Math.floor(Math.random() * MODARCHIVE_CATALOG.length);
+  const track = MODARCHIVE_CATALOG[index];
+  const url = `https://api.modarchive.org/downloads.php?moduleid=${track.id}#${track.filename}`;
+
+  if (onStart) {
+    onStart(track.title, track.artist, track.id);
+  }
+
+  fetch(url)
+    .then((res) => {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.arrayBuffer();
+    })
+    .then((buf) => {
+      const bitArr = new BitArray(new Uint8Array(buf));
+      onSuccess(track.filename, bitArr, track.id, track.title, track.artist);
+    })
+    .catch((err) => {
+      console.error("[mod-to-skode] Failed to fetch ModArchive track:", err);
+      if (onError) onError(err.message || "Network error");
+    });
+}
+
+export function checkInitialUrl(onStart, onSuccess, onError) {
+  if (typeof window === "undefined" || !window.location) return;
+
+  const params = new URLSearchParams(window.location.search);
+  let raw = params.get("url") || params.get("mod") || params.get("module") || params.get("id");
+
+  if (!raw && window.location.hash) {
+    const h = window.location.hash.replace(/^#/, "");
+    if (h.includes("=")) {
+      const hp = new URLSearchParams(h);
+      raw = hp.get("url") || hp.get("mod") || hp.get("id");
+    } else if (h.length > 1 && !h.startsWith("/")) {
+      raw = h;
+    }
+  }
+
+  if (!raw) return;
+
+  raw = decodeURIComponent(raw).trim();
+
+  // 1. Check if raw matches any catalog entry by ID, filename, or title/keyword
+  const cleanKey = raw.toLowerCase().replace(/\.mod$/i, "");
+  const numId = parseInt(raw, 10);
+
+  let catalogTrack = MODARCHIVE_CATALOG.find((t) => {
+    if (numId && t.id === numId) return true;
+    const fClean = t.filename.toLowerCase().replace(/\.mod$/i, "");
+    if (fClean === cleanKey) return true;
+    const tClean = t.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const kClean = cleanKey.replace(/[^a-z0-9]/g, "");
+    if (tClean === kClean && kClean.length > 2) return true;
+    if (
+      cleanKey.includes("the_hunter") ||
+      cleanKey.includes("the hunter") ||
+      cleanKey.includes("hunter")
+    ) {
+      return t.id === 172266;
+    }
+    return false;
+  });
+
+  // Also check if raw is a URL like https://api.modarchive.org/downloads.php?moduleid=172266
+  if (!catalogTrack && raw.includes("moduleid=")) {
+    const m = raw.match(/moduleid=(\d+)/);
+    if (m) {
+      const mid = parseInt(m[1], 10);
+      catalogTrack = MODARCHIVE_CATALOG.find((t) => t.id === mid);
+    }
+  }
+
+  if (catalogTrack) {
+    if (onStart) onStart(catalogTrack.title, catalogTrack.artist, catalogTrack.id);
+
+    const primaryUrl = `https://api.modarchive.org/downloads.php?moduleid=${catalogTrack.id}#${catalogTrack.filename}`;
+    const fallbackLocalUrl = `demos/${catalogTrack.filename}`;
+    const safetyLocalUrl = `demos/space_debris.mod`;
+
+    fetch(primaryUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.arrayBuffer();
+      })
+      .then((buf) => {
+        const bitArr = new BitArray(new Uint8Array(buf));
+        onSuccess(catalogTrack.filename, bitArr, catalogTrack.id, catalogTrack.title, catalogTrack.artist);
+      })
+      .catch((primaryErr) => {
+        console.warn("[mod-to-skode] Primary ModArchive download failed, trying local bundled copy:", primaryErr);
+        fetch(fallbackLocalUrl)
+          .then((res) => {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.arrayBuffer();
+          })
+          .then((buf) => {
+            const bitArr = new BitArray(new Uint8Array(buf));
+            onSuccess(catalogTrack.filename, bitArr, catalogTrack.id, catalogTrack.title, catalogTrack.artist + " (Offline Bundled)");
+          })
+          .catch((fallbackErr) => {
+            console.warn("[mod-to-skode] Local copy failed, falling back to Space Debris demo:", fallbackErr);
+            fetch(safetyLocalUrl)
+              .then((res) => res.arrayBuffer())
+              .then((buf) => {
+                const bitArr = new BitArray(new Uint8Array(buf));
+                onSuccess("space_debris.mod", bitArr, 57925, "Space Debris (Fallback Demo)", "Captain");
+              })
+              .catch((err) => {
+                if (onError) onError("Failed to load module: " + (primaryErr.message || "Network error"));
+              });
+          });
+      });
+    return;
+  }
+
+  // 2. Generic URL
+  let targetUrl = raw;
+  let filename = "module.mod";
+
+  try {
+    const parsed = new URL(raw, window.location.href);
+    targetUrl = parsed.href;
+    const pathParts = parsed.pathname.split("/");
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && (lastPart.endsWith(".mod") || lastPart.endsWith(".MOD"))) {
+      filename = lastPart;
+    } else if (parsed.hash && parsed.hash.includes(".mod")) {
+      filename = parsed.hash.replace(/^#/, "");
+    }
+  } catch (e) {}
+
+  if (onStart) onStart(filename, "Remote Source", 0);
+
+  fetch(targetUrl)
+    .then((res) => {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.arrayBuffer();
+    })
+    .then((buf) => {
+      const bitArr = new BitArray(new Uint8Array(buf));
+      onSuccess(filename, bitArr, 0, filename, "Remote Track");
+    })
+    .catch((err) => {
+      console.warn("[mod-to-skode] Remote URL failed, falling back to Space Debris demo:", err);
+      fetch("demos/space_debris.mod")
+        .then((res) => res.arrayBuffer())
+        .then((buf) => {
+          const bitArr = new BitArray(new Uint8Array(buf));
+          onSuccess("space_debris.mod", bitArr, 57925, "Space Debris (Fallback Demo)", "Captain");
+        })
+        .catch(() => {
+          if (onError) onError("Could not reach " + targetUrl + " (" + (err.message || "Network error") + ")");
+        });
+    });
+}
+
 

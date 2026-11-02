@@ -21,9 +21,12 @@ import mod_to_skode/mod_parser
 import mod_to_skode/types.{
   type ConversionResult, type Instrument, type ModFile, type Model, type Msg,
   ConversionCompleted, ConvertClicked, DownloadZipClicked, EngineStatusChanged,
-  FileDropped, LoadDemo, Model, PanicClicked, PauseClicked, PlayClicked,
-  PlaybackEnded, PlaybackStepChanged, PreviewSampleClicked, ResetClicked,
-  ResumeClicked, StopClicked, TabSelected,
+  FileDropped, LoadDemo, MasterVolumeChanged, ModArchiveFetchFailed,
+  ModArchiveFetchStarted, ModArchiveInfo, ModArchiveLoaded, Model, PanicClicked,
+  PauseClicked, PlayClicked, PlaybackEnded, PlaybackStepChanged,
+  PreviewSampleClicked, RandomModArchiveClicked, ResetClicked, ResumeClicked,
+  StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono, StopClicked,
+  TabSelected,
 }
 
 // ---------------------------------------------------------------------------
@@ -41,6 +44,20 @@ fn js_load_url_mod(
   url: String,
   filename: String,
   callback: fn(String, BitArray) -> Nil,
+) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "fetchRandomModArchive")
+fn js_fetch_random_modarchive(
+  on_start: fn(String, String, Int) -> Nil,
+  on_success: fn(String, BitArray, Int, String, String) -> Nil,
+  on_error: fn(String) -> Nil,
+) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "checkInitialUrl")
+fn js_check_initial_url(
+  on_start: fn(String, String, Int) -> Nil,
+  on_success: fn(String, BitArray, Int, String, String) -> Nil,
+  on_error: fn(String) -> Nil,
 ) -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "loadAndPlaySkode")
@@ -78,9 +95,23 @@ fn js_download_zip(
   filename: String,
 ) -> Nil
 
+@external(javascript, "./skred_ffi.mjs", "sendCommand")
+fn js_send_command(cmd: String) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "setMasterVolume")
+fn js_set_master_volume(db: Int) -> Nil
+
 // ---------------------------------------------------------------------------
 // Lustre Effects
 // ---------------------------------------------------------------------------
+
+fn send_command_effect(cmd: String) -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_send_command(cmd) })
+}
+
+fn set_master_volume_effect(db: Int) -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_set_master_volume(db) })
+}
 
 fn init_engine_effect() -> Effect(Msg) {
   effect.from(fn(dispatch) {
@@ -110,6 +141,34 @@ fn load_demo_effect(url: String, filename: String) -> Effect(Msg) {
     js_load_url_mod(url, filename, fn(name, data) {
       dispatch(FileDropped(name, data))
     })
+  })
+}
+
+fn random_modarchive_effect() -> Effect(Msg) {
+  effect.from(fn(dispatch) {
+    js_fetch_random_modarchive(
+      fn(title, artist, id) {
+        dispatch(ModArchiveFetchStarted(title, artist, id))
+      },
+      fn(filename, data, id, title, artist) {
+        dispatch(ModArchiveLoaded(filename, data, id, title, artist))
+      },
+      fn(err) { dispatch(ModArchiveFetchFailed(err)) },
+    )
+  })
+}
+
+fn check_initial_url_effect() -> Effect(Msg) {
+  effect.from(fn(dispatch) {
+    js_check_initial_url(
+      fn(title, artist, id) {
+        dispatch(ModArchiveFetchStarted(title, artist, id))
+      },
+      fn(filename, data, id, title, artist) {
+        dispatch(ModArchiveLoaded(filename, data, id, title, artist))
+      },
+      fn(err) { dispatch(ModArchiveFetchFailed(err)) },
+    )
   })
 }
 
@@ -168,6 +227,9 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
       error_message: None,
       status_text: "Ready. Drag and drop any .mod file to convert.",
       active_tab: "info",
+      modarchive_info: None,
+      stereo_mode: StereoHeadphone,
+      master_volume: -6,
     )
 
   let effects =
@@ -175,6 +237,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
       init_engine_effect(),
       register_file_drop_effect(),
       register_playback_listener_effect(),
+      check_initial_url_effect(),
     ])
 
   #(model, effects)
@@ -202,13 +265,19 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               current_step: 0,
               error_message: Some(err),
               is_converting: False,
+              modarchive_info: None,
               status_text: "Parse error: " <> err,
             ),
             stop_eff,
           )
         }
         Ok(mod_file) -> {
-          case converter.convert(mod_file) {
+          case
+            converter.convert_with_options(
+              mod_file,
+              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+            )
+          {
             Error(err) -> {
               #(
                 Model(
@@ -219,6 +288,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                   active_file: Some(mod_file),
                   error_message: Some(err),
                   is_converting: False,
+                  modarchive_info: None,
                   status_text: "Conversion error: " <> err,
                 ),
                 stop_eff,
@@ -234,6 +304,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                   active_file: Some(mod_file),
                   conversion: Some(conv_res),
                   is_converting: False,
+                  modarchive_info: None,
                   error_message: None,
                   status_text: "Successfully converted "
                     <> filename
@@ -254,7 +325,12 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ConvertClicked -> {
       case model.active_file {
         Some(mod_file) -> {
-          case converter.convert(mod_file) {
+          case
+            converter.convert_with_options(
+              mod_file,
+              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+            )
+          {
             Error(err) -> {
               #(
                 Model(
@@ -372,7 +448,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           current_step: 0,
           status_text: "Playback finished.",
         ),
-        effect.none(),
+        stop_effect(),
       )
     }
 
@@ -418,10 +494,19 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     DownloadZipClicked -> {
       case model.conversion, model.active_file {
         Some(res), Some(mod_file) -> {
+          let skode_text = case
+            converter.convert_with_options(
+              mod_file,
+              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+            )
+          {
+            Ok(new_res) -> new_res.skode_text
+            Error(_) -> res.skode_text
+          }
           let zip_name = clean_zip_name(mod_file.filename)
           #(
             Model(..model, status_text: "Downloading " <> zip_name <> "..."),
-            download_zip_effect(res.skode_text, res.samples, zip_name),
+            download_zip_effect(skode_text, res.samples, zip_name),
           )
         }
         _, _ -> #(model, effect.none())
@@ -438,6 +523,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           is_paused: False,
           current_step: 0,
           error_message: None,
+          modarchive_info: None,
           status_text: "Ready. Drag and drop any .mod file to convert.",
         ),
         stop_effect(),
@@ -456,9 +542,169 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           is_paused: False,
           current_step: 0,
           is_converting: True,
+          modarchive_info: None,
           status_text: "Downloading & converting demo " <> filename <> "...",
         ),
         effect.batch([stop_effect(), load_demo_effect(url, filename)]),
+      )
+    }
+
+    RandomModArchiveClicked -> {
+      case model.is_converting {
+        True -> #(model, effect.none())
+        False -> #(
+          Model(
+            ..model,
+            is_playing: False,
+            is_paused: False,
+            current_step: 0,
+            is_converting: True,
+            error_message: None,
+            status_text: "Selecting random Amiga module from ModArchive...",
+          ),
+          effect.batch([stop_effect(), random_modarchive_effect()]),
+        )
+      }
+    }
+
+    ModArchiveFetchStarted(title, artist, id) -> {
+      #(
+        Model(
+          ..model,
+          status_text: "Downloading \""
+            <> title
+            <> "\" by "
+            <> artist
+            <> " from ModArchive (#"
+            <> int.to_string(id)
+            <> ")...",
+        ),
+        effect.none(),
+      )
+    }
+
+    ModArchiveFetchFailed(err) -> {
+      #(
+        Model(
+          ..model,
+          is_converting: False,
+          error_message: Some(err),
+          status_text: "ModArchive download failed: " <> err,
+        ),
+        effect.none(),
+      )
+    }
+
+    ModArchiveLoaded(filename, data, id, title, artist) -> {
+      let stop_eff = stop_effect()
+      case mod_parser.parse(filename, data) {
+        Error(err) -> {
+          #(
+            Model(
+              ..model,
+              is_playing: False,
+              is_paused: False,
+              current_step: 0,
+              error_message: Some(err),
+              is_converting: False,
+              modarchive_info: None,
+              status_text: "Parse error on " <> filename <> ": " <> err,
+            ),
+            stop_eff,
+          )
+        }
+        Ok(mod_file) -> {
+          case
+            converter.convert_with_options(
+              mod_file,
+              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+            )
+          {
+            Error(err) -> {
+              #(
+                Model(
+                  ..model,
+                  is_playing: False,
+                  is_paused: False,
+                  current_step: 0,
+                  active_file: Some(mod_file),
+                  error_message: Some(err),
+                  is_converting: False,
+                  modarchive_info: Some(ModArchiveInfo(
+                    id: id,
+                    title: title,
+                    artist: artist,
+                  )),
+                  status_text: "Conversion error on " <> filename <> ": " <> err,
+                ),
+                stop_eff,
+              )
+            }
+            Ok(conv_res) -> {
+              #(
+                Model(
+                  ..model,
+                  is_playing: False,
+                  is_paused: False,
+                  current_step: 0,
+                  active_file: Some(mod_file),
+                  conversion: Some(conv_res),
+                  is_converting: False,
+                  modarchive_info: Some(ModArchiveInfo(
+                    id: id,
+                    title: title,
+                    artist: artist,
+                  )),
+                  error_message: None,
+                  status_text: "Loaded \""
+                    <> title
+                    <> "\" by "
+                    <> artist
+                    <> " ("
+                    <> converter.format_duration(conv_res.duration_seconds)
+                    <> ", "
+                    <> int.to_string(conv_res.total_rows)
+                    <> " rows).",
+                ),
+                stop_eff,
+              )
+            }
+          }
+        }
+      }
+    }
+
+    StereoModeChanged(new_mode) -> {
+      let live_eff = case model.active_file {
+        Some(mod_file) -> {
+          let cmd =
+            converter.build_live_stereo_command(mod_file.num_channels, new_mode)
+          send_command_effect(cmd)
+        }
+        None -> effect.none()
+      }
+
+      let mode_desc = case new_mode {
+        StereoHeadphone -> "Stereo separation: 🎧 Headphone (75%)."
+        StereoAmiga -> "Stereo separation: 🔊 Authentic Amiga Hardware (100%)."
+        StereoMono -> "Stereo separation: 📻 Mono (0%)."
+      }
+
+      #(Model(..model, stereo_mode: new_mode, status_text: mode_desc), live_eff)
+    }
+
+    MasterVolumeChanged(vol) -> {
+      let formatted_db = case vol > 0 {
+        True -> "+" <> int.to_string(vol)
+        False -> int.to_string(vol)
+      }
+      #(
+        Model(
+          ..model,
+          master_volume: vol,
+          status_text: "Master volume: " <> formatted_db <> " dB",
+        ),
+        set_master_volume_effect(vol),
       )
     }
   }
@@ -494,7 +740,7 @@ fn view_header(model: Model) -> Element(Msg) {
   html.header([class("app-header")], [
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
-      html.span([class("badge-version")], [text("v0.1.0")]),
+      html.span([class("badge-version")], [text("v0.2.0")]),
       html.span([class("badge-engine")], [text("Skred v0.80.0")]),
     ]),
     html.div([class("header-controls")], [
@@ -569,6 +815,14 @@ fn view_drop_zone(model: Model) -> Element(Msg) {
               attribute.disabled(model.is_converting),
             ],
             [text("⚡ 4K Intro Tune")],
+          ),
+          html.button(
+            [
+              class("btn btn-modarchive btn-sm"),
+              event.on_click(RandomModArchiveClicked),
+              attribute.disabled(model.is_converting),
+            ],
+            [text("🎲 Random from ModArchive")],
           ),
         ]),
       ]),
@@ -671,6 +925,50 @@ fn view_drop_zone(model: Model) -> Element(Msg) {
         "📦 Ready-to-Play ZIP",
         "Generates main.sk alongside 16-bit 16574Hz WAV samples packaged directly in an in-memory ZIP archive.",
       ),
+    ]),
+    html.div([class("welcome-author-bar")], [
+      html.span([], [
+        text("Created by "),
+        html.a(
+          [
+            class("author-inline-link"),
+            href("https://josephestewart.com"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+          ],
+          [text("Joseph Stewart (CV)")],
+        ),
+        text(" · "),
+        html.a(
+          [
+            class("author-inline-link"),
+            href("https://www.youtube.com/@octetta"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+          ],
+          [text("YouTube (@octetta) ↗")],
+        ),
+        text(" · Made with ❤️ in "),
+        html.a(
+          [
+            class("author-inline-link gleam-inline"),
+            href("https://gleam.run"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+          ],
+          [text("Gleam")],
+        ),
+        text(" & "),
+        html.a(
+          [
+            class("author-inline-link lustre-inline"),
+            href("https://lustre.build"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+          ],
+          [text("Lustre")],
+        ),
+      ]),
     ]),
   ])
 }
@@ -842,12 +1140,102 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
           [text("💾 Download .ZIP")],
         ),
         html.button(
+          [
+            class("btn btn-modarchive btn-lg"),
+            event.on_click(RandomModArchiveClicked),
+            attribute.disabled(model.is_converting),
+          ],
+          [text("🎲 Random MOD")],
+        ),
+        html.button(
           [class("btn btn-secondary btn-lg"), event.on_click(ResetClicked)],
           [text("⟲ New File")],
         ),
       ]),
+      html.div([class("transport-controls-right")], [
+        view_volume_slider(model),
+        view_stereo_selector(model),
+      ]),
     ]),
     progress_section,
+  ])
+}
+
+fn view_volume_slider(model: Model) -> Element(Msg) {
+  let vol_icon = case model.master_volume {
+    v if v <= -30 -> "🔈"
+    v if v <= -12 -> "🔉"
+    _ -> "🔊"
+  }
+  let vol_str = case model.master_volume > 0 {
+    True -> "+" <> int.to_string(model.master_volume) <> " dB"
+    False -> int.to_string(model.master_volume) <> " dB"
+  }
+
+  html.div([class("volume-control-group")], [
+    html.span([class("volume-icon")], [text(vol_icon)]),
+    html.span([class("volume-label")], [text("VOL")]),
+    html.input([
+      type_("range"),
+      attribute.min("-40"),
+      attribute.max("6"),
+      attribute.step("1"),
+      attribute.value(int.to_string(model.master_volume)),
+      attribute.title("Master volume (" <> vol_str <> ") - Skode V# command"),
+      class("volume-slider"),
+      event.on_input(fn(val_str) {
+        case int.parse(val_str) {
+          Ok(v) -> MasterVolumeChanged(v)
+          Error(_) -> MasterVolumeChanged(-6)
+        }
+      }),
+    ]),
+    html.span([class("volume-value-badge")], [text(vol_str)]),
+  ])
+}
+
+fn view_stereo_selector(model: Model) -> Element(Msg) {
+  html.div([class("stereo-control-group")], [
+    html.span([class("stereo-label")], [text("STEREO")]),
+    html.div([class("segmented-control")], [
+      html.button(
+        [
+          class(case model.stereo_mode {
+            StereoHeadphone -> "segment-btn active"
+            _ -> "segment-btn"
+          }),
+          event.on_click(StereoModeChanged(StereoHeadphone)),
+          attribute.title(
+            "Headphone separation (75%) - Prevents ear fatigue on headphones/earbuds",
+          ),
+        ],
+        [text("🎧 75%")],
+      ),
+      html.button(
+        [
+          class(case model.stereo_mode {
+            StereoAmiga -> "segment-btn active"
+            _ -> "segment-btn"
+          }),
+          event.on_click(StereoModeChanged(StereoAmiga)),
+          attribute.title(
+            "Authentic Paula Hardware (100% L-R-R-L) - True Amiga separation",
+          ),
+        ],
+        [text("🔊 Amiga 100%")],
+      ),
+      html.button(
+        [
+          class(case model.stereo_mode {
+            StereoMono -> "segment-btn active"
+            _ -> "segment-btn"
+          }),
+          event.on_click(StereoModeChanged(StereoMono)),
+          attribute.title("Mono (0%) - Centers all channels"),
+        ],
+        [text("📻 Mono")],
+      ),
+    ]),
   ])
 }
 
@@ -867,15 +1255,50 @@ fn view_metadata_bar(model: Model, mod_file: ModFile) -> Element(Msg) {
     None -> int.to_string(mod_file.song_length) <> " patterns"
   }
 
-  html.div([class("meta-bar")], [
+  let source_items = case model.modarchive_info {
+    Some(info) -> [
+      html.div([class("meta-item meta-item-modarchive")], [
+        html.span([class("meta-label")], [text("MODARCHIVE")]),
+        html.a(
+          [
+            class("meta-link-modarchive"),
+            href("https://modarchive.org/module.php?" <> int.to_string(info.id)),
+            target("_blank"),
+            rel("noopener noreferrer"),
+          ],
+          [
+            text("#" <> int.to_string(info.id) <> " by " <> info.artist <> " ↗"),
+          ],
+        ),
+      ]),
+    ]
+    None -> []
+  }
+
+  let stereo_str = case model.stereo_mode {
+    StereoHeadphone -> "75% (Headphones)"
+    StereoAmiga -> "100% (Amiga HW)"
+    StereoMono -> "Mono"
+  }
+
+  let vol_display = case model.master_volume > 0 {
+    True -> "+" <> int.to_string(model.master_volume) <> " dB"
+    False -> int.to_string(model.master_volume) <> " dB"
+  }
+
+  let base_items = [
     meta_item("TITLE", clean_title),
     meta_item("FILE", mod_file.filename),
     meta_item("CHANNELS", int.to_string(mod_file.num_channels) <> " CH"),
+    meta_item("STEREO", stereo_str),
+    meta_item("MASTER VOL", vol_display),
     meta_item("DURATION", duration_str),
     meta_item("LENGTH", rows_str),
     meta_item("PATTERNS", int.to_string(list.length(mod_file.patterns))),
-    meta_item("VERSION", "v0.1.0"),
-  ])
+    meta_item("VERSION", "v0.2.0"),
+  ]
+
+  html.div([class("meta-bar")], list.append(base_items, source_items))
 }
 
 fn meta_item(label: String, val: String) -> Element(Msg) {
@@ -1164,7 +1587,56 @@ fn view_footer(model: Model) -> Element(Msg) {
   html.footer([class("app-footer")], [
     html.span([class("status-message")], [text(model.status_text)]),
     html.div([class("footer-links")], [
-      html.span([class("version-tag")], [text("mod-to-skode v0.1.0")]),
+      html.a(
+        [
+          class("footer-link"),
+          href("https://josephestewart.com"),
+          target("_blank"),
+          rel("noopener noreferrer"),
+          attribute.title("Joseph Stewart - CV & Projects"),
+        ],
+        [text("Joseph Stewart (CV)")],
+      ),
+      html.span([class("footer-separator")], [text("·")]),
+      html.a(
+        [
+          class("footer-link"),
+          href("https://www.youtube.com/@octetta"),
+          target("_blank"),
+          rel("noopener noreferrer"),
+          attribute.title("YouTube (@octetta)"),
+        ],
+        [text("YouTube ↗")],
+      ),
+      html.span([class("footer-separator")], [text("·")]),
+      html.span([class("footer-love")], [
+        html.span([class("heart-icon")], [text("❤️ ")]),
+        html.a(
+          [
+            class("footer-link gleam-link"),
+            href("https://gleam.run"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+            attribute.title(
+              "Gleam: A friendly language for building type-safe systems that scale",
+            ),
+          ],
+          [text("Gleam")],
+        ),
+        text(" & "),
+        html.a(
+          [
+            class("footer-link lustre-link"),
+            href("https://lustre.build"),
+            target("_blank"),
+            rel("noopener noreferrer"),
+            attribute.title(
+              "Lustre: A fast, delightful frontend framework for Gleam",
+            ),
+          ],
+          [text("Lustre")],
+        ),
+      ]),
       html.span([class("footer-separator")], [text("·")]),
       html.a(
         [
@@ -1173,10 +1645,10 @@ fn view_footer(model: Model) -> Element(Msg) {
           target("_blank"),
           rel("noopener noreferrer"),
         ],
-        [text("The Mod Archive ↗")],
+        [text("ModArchive ↗")],
       ),
       html.span([class("footer-separator")], [text("·")]),
-      html.span([], [text("Skred v0.80.0")]),
+      html.span([class("version-tag")], [text("v0.2.0")]),
     ]),
   ])
 }

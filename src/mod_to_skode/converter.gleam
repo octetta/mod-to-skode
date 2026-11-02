@@ -11,7 +11,8 @@ import gleam/string
 import mod_to_skode/mod_parser
 import mod_to_skode/types.{
   type ConversionResult, type Instrument, type ModFile, type Note,
-  ConversionResult, Note,
+  type StereoMode, ConversionResult, Note, StereoAmiga, StereoHeadphone,
+  StereoMono,
 }
 
 @external(javascript, "../skred_ffi.mjs", "formatFloat")
@@ -497,8 +498,47 @@ fn add_pattern_delays(
   }
 }
 
-/// Converts a parsed ModFile into Skode 0.80.0 script and WAV samples.
+pub type ConvertOptions {
+  ConvertOptions(stereo_mode: StereoMode)
+}
+
+pub fn default_options() -> ConvertOptions {
+  ConvertOptions(stereo_mode: StereoHeadphone)
+}
+
+pub fn get_channel_pan(c: Int, mode: StereoMode) -> String {
+  case mode {
+    StereoMono -> "0"
+    StereoHeadphone ->
+      case c % 4 == 0 || c % 4 == 3 {
+        True -> "-0.75"
+        False -> "0.75"
+      }
+    StereoAmiga ->
+      case c % 4 == 0 || c % 4 == 3 {
+        True -> "-1.0"
+        False -> "1.0"
+      }
+  }
+}
+
+pub fn build_live_stereo_command(nch: Int, mode: StereoMode) -> String {
+  list.map(make_range(0, nch - 1), fn(c) {
+    "v" <> int.to_string(c) <> " p" <> get_channel_pan(c, mode)
+  })
+  |> string.join(" ")
+}
+
+/// Converts a parsed ModFile into Skode 0.80.0 script and WAV samples with default options.
 pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
+  convert_with_options(mod, default_options())
+}
+
+/// Converts a parsed ModFile into Skode 0.80.0 script and WAV samples with custom options.
+pub fn convert_with_options(
+  mod: ModFile,
+  options: ConvertOptions,
+) -> Result(ConversionResult, String) {
   let inst_map =
     list.map(mod.instruments, fn(ins) { #(ins.id, ins) })
     |> dict.from_list
@@ -540,10 +580,7 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
 
       let voice_inits =
         list.map(make_range(0, nch - 1), fn(c) {
-          let pan = case c % 4 == 0 || c % 4 == 3 {
-            True -> "-0.6"
-            False -> "0.6"
-          }
+          let pan = get_channel_pan(c, options.stereo_mode)
           let c_str = int.to_string(c)
           let lfo_str = int.to_string(c + nch)
           "v"
@@ -644,10 +681,16 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
       let end_step = s_last
       let end_ch_lines =
         list.map(make_range(0, nch - 1), fn(c) {
-          #(
-            c,
-            "[v" <> int.to_string(c) <> "] x" <> int.to_string(end_step) <> "\n",
-          )
+          let line = case c == 0 {
+            True -> "[Z0 ce 127 v0] x" <> int.to_string(end_step) <> "\n"
+            False ->
+              "[v"
+              <> int.to_string(c)
+              <> "] x"
+              <> int.to_string(end_step)
+              <> "\n"
+          }
+          #(c, line)
         })
 
       let end_cond_line = #(
@@ -667,7 +710,34 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
       let pat_tracks =
         list.map(make_range(0, nch), fn(c) {
           let text = dict.get(full_pattern_texts, c) |> result.unwrap("")
-          "y" <> int.to_string(c) <> "\n" <> text
+          case c < nch {
+            True ->
+              "# ==============================================================================\n"
+              <> "# TRACK "
+              <> int.to_string(c)
+              <> " (Channel "
+              <> int.to_string(c + 1)
+              <> ")\n"
+              <> "# ==============================================================================\n"
+              <> "y"
+              <> int.to_string(c)
+              <> "\n"
+              <> "[#] x "
+              <> int.to_string(s_last)
+              <> "\n"
+              <> text
+            False ->
+              "# ==============================================================================\n"
+              <> "# CONDUCTOR TRACK (Speed & Tempo Automation)\n"
+              <> "# ==============================================================================\n"
+              <> "y"
+              <> int.to_string(c)
+              <> "\n"
+              <> "[#] x "
+              <> int.to_string(s_last)
+              <> "\n"
+              <> text
+          }
         })
 
       // Stop & Play Macros matching Skred v0.80.0
@@ -684,7 +754,14 @@ pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
       let play_cmds = "?ce! /cer 1 Z0 Z! " <> play_pats <> " y127 z1"
       let efx_cmds =
         "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
-      let nofx_cmds = "v0 p-.6 v1 p.6 v2 p.6 v3 p-.6"
+      let nofx_cmds =
+        list.map(make_range(0, nch - 1), fn(c) {
+          "v"
+          <> int.to_string(c)
+          <> " p"
+          <> get_channel_pan(c, options.stereo_mode)
+        })
+        |> string.join(" ")
 
       let macro_defs = [
         "# === MACROS ===\n",
@@ -853,15 +930,54 @@ fn generate_all_rows(
       // Conductor track commands (channel nch)
       let cond_cmds = build_conductor_cmds(row_speed, row_tempo, is_delay)
 
+      // Section header comment for pattern/bar boundaries
+      let section_header = case u_row.is_pat_delay_repeat {
+        True ->
+          "\n# --- Pattern Delay Repeat (Step "
+          <> int.to_string(global_idx)
+          <> ") ---\n"
+        False ->
+          case u_row.row_idx {
+            0 ->
+              "\n# --- Order "
+              <> pad_2(u_row.seq_idx)
+              <> " | Pattern "
+              <> pad_2(u_row.pat_idx)
+              <> " (Step "
+              <> int.to_string(global_idx)
+              <> ") ---\n"
+            r if r % 16 == 0 ->
+              "\n# --- Row "
+              <> int.to_string(r)
+              <> " (Step "
+              <> int.to_string(global_idx)
+              <> ") ---\n"
+            _ -> ""
+          }
+      }
+
       let updated_pat_texts =
         list.fold(ch_cmds_list, pat_texts, fn(acc, item) {
-          let #(c, cmd_str) = item
+          let #(c, cmd_str, comment) = item
           let actual_cmd = case cmd_str, rest_rows {
             "", [] -> "v" <> int.to_string(c)
             _, _ -> cmd_str
           }
-          let line =
-            "[" <> actual_cmd <> "] x" <> int.to_string(global_idx) <> "\n"
+          let comment_suffix = case comment {
+            "" -> ""
+            _ -> "   # " <> comment
+          }
+          let line = case actual_cmd {
+            "" -> section_header
+            _ ->
+              section_header
+              <> "["
+              <> actual_cmd
+              <> "] x"
+              <> int.to_string(global_idx)
+              <> comment_suffix
+              <> "\n"
+          }
           let existing = dict.get(acc, c) |> result.unwrap("")
           dict.insert(acc, c, existing <> line)
         })
@@ -869,8 +985,29 @@ fn generate_all_rows(
       let final_pat_texts = case cond_cmds {
         "" -> updated_pat_texts
         _ -> {
+          let cond_comment = case row_speed, row_tempo {
+            Some(s), Some(t) ->
+              "Speed "
+              <> int.to_string(s)
+              <> " | Tempo "
+              <> int.to_string(t)
+              <> " BPM"
+            Some(s), None -> "Speed " <> int.to_string(s)
+            None, Some(t) -> "Tempo " <> int.to_string(t) <> " BPM"
+            None, None -> ""
+          }
+          let cond_comment_suffix = case cond_comment {
+            "" -> ""
+            _ -> "   # " <> cond_comment
+          }
           let line =
-            "[" <> cond_cmds <> "] x" <> int.to_string(global_idx) <> "\n"
+            section_header
+            <> "["
+            <> cond_cmds
+            <> "] x"
+            <> int.to_string(global_idx)
+            <> cond_comment_suffix
+            <> "\n"
           let existing = dict.get(updated_pat_texts, nch) |> result.unwrap("")
           dict.insert(updated_pat_texts, nch, existing <> line)
         }
@@ -943,6 +1080,107 @@ fn build_conductor_cmds(
   }
 }
 
+fn pad_2(n: Int) -> String {
+  case n < 10 {
+    True -> "0" <> int.to_string(n)
+    False -> int.to_string(n)
+  }
+}
+
+fn midi_to_note_name(midi: Int) -> String {
+  let note_names = [
+    "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
+  ]
+  let semitone = midi % 12
+  let oct = { midi / 12 } - 1
+  let name =
+    list.drop(note_names, semitone)
+    |> list.first
+    |> result.unwrap("C-")
+  name <> int.to_string(oct)
+}
+
+fn effect_description(eff: Int, param: Int) -> String {
+  let ext_type = int.bitwise_shift_right(param, 4)
+  case eff {
+    0x0 if param > 0 -> "Arp"
+    0x1 -> "Porta Up"
+    0x2 -> "Porta Down"
+    0x3 -> "Tone Porta"
+    0x4 -> "Vibrato"
+    0x5 -> "Porta+VolSlide"
+    0x6 -> "Vib+VolSlide"
+    0x7 -> "Tremolo"
+    0x8 -> "Pan"
+    0x9 -> "Sample Offset"
+    0xA -> "Vol Slide"
+    0xB -> "Pos Jump"
+    0xC -> "Vol " <> int.to_string(param)
+    0xD -> "Pat Break"
+    0xE if ext_type == 0x0 -> "Filter Toggle"
+    0xE if ext_type == 0x1 -> "Fine Porta Up"
+    0xE if ext_type == 0x2 -> "Fine Porta Down"
+    0xE if ext_type == 0x3 -> "Glissando"
+    0xE if ext_type == 0x4 -> "Vib Wave"
+    0xE if ext_type == 0x5 -> "Finetune"
+    0xE if ext_type == 0x6 -> "Pattern Loop"
+    0xE if ext_type == 0x7 -> "Trem Wave"
+    0xE if ext_type == 0x8 -> "Pan"
+    0xE if ext_type == 0x9 -> "Retrig"
+    0xE if ext_type == 0xA -> "Fine VolSlide Up"
+    0xE if ext_type == 0xB -> "Fine VolSlide Down"
+    0xE if ext_type == 0xC -> "Note Cut"
+    0xE if ext_type == 0xD -> "Note Delay"
+    0xE if ext_type == 0xE -> "Pattern Delay"
+    0xE if ext_type == 0xF -> "Invert Loop"
+    0xF if param > 0 && param < 32 -> "Speed " <> int.to_string(param)
+    0xF if param >= 32 -> "BPM " <> int.to_string(param)
+    _ -> ""
+  }
+}
+
+fn build_note_comment(note: Note, inst_map: Dict(Int, Instrument)) -> String {
+  let note_part = case note.midi {
+    Some(m) -> midi_to_note_name(m)
+    None -> ""
+  }
+
+  let inst_part = case note.inst > 0 {
+    True -> {
+      let id_str = pad_2(note.inst)
+      case dict.get(inst_map, note.inst) {
+        Ok(ins) -> {
+          let clean = string.trim(ins.name)
+          case clean == "" {
+            True -> "Inst " <> id_str
+            False -> id_str <> " \"" <> clean <> "\""
+          }
+        }
+        Error(_) -> "Inst " <> id_str
+      }
+    }
+    False -> ""
+  }
+
+  let eff_part = effect_description(note.effect, note.param)
+
+  let parts = []
+  let parts = case note_part != "" {
+    True -> [note_part, ..parts]
+    False -> parts
+  }
+  let parts = case inst_part != "" {
+    True -> [inst_part, ..parts]
+    False -> parts
+  }
+  let parts = case eff_part != "" {
+    True -> [eff_part, ..parts]
+    False -> parts
+  }
+
+  string.join(list.reverse(parts), " | ")
+}
+
 fn process_channels(
   notes: List(Note),
   c: Int,
@@ -955,8 +1193,8 @@ fn process_channels(
   is_delay: Bool,
   chans: Dict(Int, ChannelState),
   inst_map: Dict(Int, Instrument),
-  acc: List(#(Int, String)),
-) -> #(Dict(Int, ChannelState), List(#(Int, String))) {
+  acc: List(#(Int, String, String)),
+) -> #(Dict(Int, ChannelState), List(#(Int, String, String))) {
   case c >= nch {
     True -> #(chans, list.reverse(acc))
     False -> {
@@ -971,7 +1209,7 @@ fn process_channels(
 
       let ch = dict.get(chans, c) |> result.unwrap(initial_channel_state())
 
-      let #(new_ch, cmd_str) =
+      let #(new_ch, cmd_str, comment) =
         process_single_channel(
           c,
           nch,
@@ -999,7 +1237,7 @@ fn process_channels(
         is_delay,
         updated_chans,
         inst_map,
-        [#(c, cmd_str), ..acc],
+        [#(c, cmd_str, comment), ..acc],
       )
     }
   }
@@ -1017,7 +1255,7 @@ fn process_single_channel(
   note: Note,
   ch: ChannelState,
   inst_map: Dict(Int, Instrument),
-) -> #(ChannelState, String) {
+) -> #(ChannelState, String, String) {
   let cmds = []
 
   // Pattern boundary: rebind voice
@@ -1486,8 +1724,9 @@ fn process_single_channel(
 
   let full_cmds = list.flatten([list.reverse(cmds), cand_cmds])
   let final_ch = ChannelState(..ch_after_ticks, current_fb: final_fb)
+  let comment = build_note_comment(note, inst_map)
 
-  #(final_ch, string.join(full_cmds, " "))
+  #(final_ch, string.join(full_cmds, " "), comment)
 }
 
 fn simulate_ticks(

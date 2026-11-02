@@ -30,6 +30,7 @@ html, body {
   color: var(--text-main);
   font-family: var(--font-sans);
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
 }
@@ -43,6 +44,7 @@ html, body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -403,6 +405,138 @@ html, body {
   gap: 12px;
 }
 
+.transport-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Master Volume Slider Control */
+.volume-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.volume-label {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.volume-slider:hover {
+  border-color: var(--accent-cyan);
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+  transition: all 0.15s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green-glow);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+  transition: all 0.15s ease;
+}
+
+.volume-value-badge {
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  font-weight: 600;
+  min-width: 48px;
+  text-align: right;
+}
+
+/* Stereo Separation Control */
+.stereo-control-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stereo-label {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.segmented-control {
+  display: inline-flex;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.segment-btn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.segment-btn:hover:not(.active) {
+  color: var(--text-main);
+  background-color: var(--bg-subtle);
+}
+
+.segment-btn.active {
+  background-color: var(--bg-card-hover);
+  color: var(--accent-green);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(0, 255, 180, 0.3);
+}
+
 .playback-tracker {
   background-color: var(--bg-card);
   border: 1px solid var(--border);
@@ -514,15 +648,48 @@ html, body {
   font-family: var(--font-mono);
 }
 
+.meta-item-modarchive {
+  background: rgba(124, 58, 237, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+.meta-link-modarchive {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #a78bfa;
+  font-family: var(--font-mono);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s ease;
+}
+
+.meta-link-modarchive:hover {
+  color: #c4b5fd;
+  text-decoration: underline;
+}
+
 /* 5. Tabs */
 .tabs-nav {
   display: flex;
   gap: 8px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 2px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabs-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-btn {
+  flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--text-muted);
@@ -766,6 +933,25 @@ html, body {
   background-color: var(--border);
 }
 
+.btn-modarchive {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-modarchive:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-modarchive:active:not(:disabled) {
+  transform: translateY(0);
+}
+
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -860,3 +1046,320 @@ html, body {
 .footer-separator {
   color: var(--border);
 }
+
+.footer-love {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+}
+
+.gleam-link, .gleam-inline {
+  color: #ffaff3;
+  font-weight: 600;
+}
+
+.gleam-link:hover, .gleam-inline:hover {
+  color: #ffc4f7;
+  text-decoration: underline;
+}
+
+.lustre-link, .lustre-inline {
+  color: #00ffb4;
+  font-weight: 600;
+}
+
+.lustre-link:hover, .lustre-inline:hover {
+  color: #55ffd0;
+  text-decoration: underline;
+}
+
+.welcome-author-bar {
+  text-align: center;
+  padding: 16px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  border-top: 1px solid var(--border);
+}
+
+.author-inline-link {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.author-inline-link:hover {
+  color: var(--accent-green);
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Mobile & Responsive Enhancements (screens <= 768px and <= 480px)
+   Preserves 100% of the desktop layout on larger displays.
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  /* 1. Header */
+  .app-header {
+    height: 52px;
+    padding: 0 14px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .brand h1 {
+    font-size: 1rem;
+  }
+
+  .badge-engine {
+    display: none; /* Keep version badge, hide engine badge to save horizontal space */
+  }
+
+  .header-controls {
+    gap: 10px;
+  }
+
+  .status-label {
+    display: none; /* Just show the glowing status dot on mobile */
+  }
+
+  /* 2. Main content container */
+  .main-content {
+    padding: 14px 12px;
+  }
+
+  /* 3. Welcome drop zone */
+  .welcome-container {
+    gap: 20px;
+  }
+
+  .drop-box {
+    padding: 28px 16px;
+  }
+
+  .drop-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+  }
+
+  .drop-title {
+    font-size: 1.25rem;
+  }
+
+  .drop-subtitle {
+    font-size: 0.85rem;
+    margin-bottom: 18px;
+  }
+
+  .demo-buttons {
+    flex-direction: column;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .demo-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .public-sources-card,
+  .developer-embed-card {
+    padding: 16px;
+  }
+
+  .sources-grid,
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* 4. Dashboard & Transport Controls */
+  .dashboard-container {
+    gap: 14px;
+  }
+
+  .transport-bar {
+    padding: 10px 12px;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .transport-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+
+  .transport-buttons .btn-lg {
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    width: 100%;
+  }
+
+  /* Download .ZIP spans full width for easy one-tap export */
+  .transport-buttons .btn-primary {
+    grid-column: span 2;
+  }
+
+  .transport-controls-right {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .volume-control-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .volume-slider {
+    flex: 1;
+    margin: 0 8px;
+  }
+
+  .stereo-control-group {
+    width: 100%;
+    justify-content: space-between;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .segmented-control {
+    flex: 1;
+    margin-left: 8px;
+  }
+
+  .segment-btn {
+    flex: 1;
+    text-align: center;
+    padding: 5px 6px;
+    font-size: 0.72rem;
+  }
+
+  .playback-tracker {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .playback-info-row {
+    font-size: 0.78rem;
+  }
+
+  .step-counter {
+    gap: 6px;
+  }
+
+  /* 5. Metadata Bar */
+  .meta-bar {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 14px;
+    padding: 12px;
+  }
+
+  .meta-item-modarchive {
+    grid-column: 1 / -1;
+  }
+
+  /* 6. Tabs & Content */
+  .tab-btn {
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tracker-table {
+    min-width: 480px; /* Ensures table remains readable with smooth horizontal scroll */
+  }
+
+  .tracker-table th,
+  .tracker-table td {
+    padding: 6px 10px;
+    font-size: 0.76rem;
+  }
+
+  .skode-view {
+    padding: 12px;
+    font-size: 0.75rem;
+    max-height: 50vh;
+  }
+
+  .embed-guide-container {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .embed-step-card {
+    padding: 12px 14px;
+  }
+
+  /* 7. Footer */
+  .app-footer {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 0.7rem;
+  }
+
+  .footer-links {
+    display: none; /* Status message takes entire footer width on mobile */
+  }
+
+  .status-message {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand h1 {
+    font-size: 0.92rem;
+  }
+
+  .badge-version {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+  }
+
+  .drop-box {
+    padding: 22px 12px;
+  }
+
+  .drop-title {
+    font-size: 1.15rem;
+  }
+
+  .btn-lg {
+    font-size: 0.85rem;
+  }
+
+  .meta-bar {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+  }
+
+  .meta-label {
+    font-size: 0.62rem;
+  }
+
+  .meta-value {
+    font-size: 0.85rem;
+  }
+
+  .meta-link-modarchive {
+    font-size: 0.82rem;
+  }
+}
+
