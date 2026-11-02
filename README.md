@@ -10,6 +10,7 @@ High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, intera
 Available both as a **100% client-side web application** with in-browser WebAssembly playback and as a standalone **native CLI binary** (`bin/mod2skode`) compiled from pure Gleam via QuickJS for zero-dependency batch conversions and terminal workflows.
 
 🌐 **Interactive Web Studio:** [octetta.github.io/mod-to-skode](https://octetta.github.io/mod-to-skode/)  
+📖 **Gleam & Lustre Code Tour:** [CODE_TOUR.md](CODE_TOUR.md)  
 📦 **Skred Audio Engine:** [github.com/octetta/pulp](https://github.com/octetta/pulp)  
 👤 **Author:** Joseph Stewart ([josephestewart.com](https://josephestewart.com)) · [YouTube: @octetta](https://youtube.com/@octetta)
 
@@ -18,6 +19,7 @@ Available both as a **100% client-side web application** with in-browser WebAsse
 ## Table of Contents
 
 - [Welcome & Overview](#welcome--overview)
+- [Gleam & Lustre Code Tour](CODE_TOUR.md)
 - [Web Application Studio](#web-application-studio)
   - [Key Features in v0.2.0](#key-features-in-v020)
   - [Real-Time Stereo Separation Modes](#real-time-stereo-separation-modes)
