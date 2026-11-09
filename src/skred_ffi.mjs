@@ -1,5 +1,5 @@
 // JavaScript FFI Bridge for mod-to-skode
-// Integrates Skred 0.80.0 WASM engine, fflate ZIP creation, Web Audio, and File APIs
+// Integrates Skred 0.83.0 WASM engine, fflate ZIP creation, Web Audio, and File APIs
 
 import { zip } from "#vendor/fflate.mjs";
 import { BitArray } from "./gleam.mjs";
@@ -89,7 +89,7 @@ export function getEngineVersion() {
       } catch (e) {}
     }
   }
-  return "0.82.0";
+  return "0.83.0";
 }
 
 export function initEngine(callback) {

@@ -1,4 +1,4 @@
-//// Core conversion logic from parsed MOD data to Skode 0.80.0 scripts and WAV assets.
+//// Core conversion logic from parsed MOD data to Skode 0.83.0 scripts and WAV assets.
 
 import gleam/dict.{type Dict}
 import gleam/float
@@ -529,12 +529,12 @@ pub fn build_live_stereo_command(nch: Int, mode: StereoMode) -> String {
   |> string.join(" ")
 }
 
-/// Converts a parsed ModFile into Skode 0.80.0 script and WAV samples with default options.
+/// Converts a parsed ModFile into Skode 0.83.0 script and WAV samples with default options.
 pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
   convert_with_options(mod, default_options())
 }
 
-/// Converts a parsed ModFile into Skode 0.80.0 script and WAV samples with custom options.
+/// Converts a parsed ModFile into Skode 0.83.0 script and WAV samples with custom options.
 pub fn convert_with_options(
   mod: ModFile,
   options: ConvertOptions,
@@ -740,7 +740,7 @@ pub fn convert_with_options(
           }
         })
 
-      // Stop & Play Macros matching Skred v0.80.0
+      // Stop & Play Macros matching Skred v0.83.0
       let stop_cmds = "/cer 0 Z0 O DQ ?ce!"
       let end_macros =
         "\n# === PATTERN TRANSITIONS & END OF SONG LOOP ===\n"

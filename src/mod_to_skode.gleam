@@ -244,7 +244,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
   let model =
     Model(
       engine_ready: False,
-      engine_version: "0.82.0",
+      engine_version: "0.83.0",
       is_playing: False,
       is_paused: False,
       current_step: 0,

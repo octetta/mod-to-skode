@@ -283,7 +283,7 @@ export function createReplDom() {
   if (typeof document === "undefined" || replContainer) return;
 
   const M = (typeof window !== "undefined" && window.Module) || (typeof globalThis !== "undefined" && globalThis.Module);
-  let engineVer = "0.82.0";
+  let engineVer = "0.83.0";
   if (M && typeof M.ccall === "function") {
     try {
       const v = M.ccall("skred_version", "string", [], []);
