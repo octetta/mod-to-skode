@@ -1,6 +1,6 @@
 # mod-to-skode
 
-[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](gleam.toml)
+[![Version](https://img.shields.io/badge/version-v0.2.2-blue.svg)](gleam.toml)
 [![Gleam](https://img.shields.io/badge/language-Gleam-ffaff3.svg)](https://gleam.run/)
 [![Lustre](https://img.shields.io/badge/frontend-Lustre-ff69b4.svg)](https://hexdocs.pm/lustre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -21,9 +21,10 @@ Available both as a **100% client-side web application** with in-browser WebAsse
 - [Welcome & Overview](#welcome--overview)
 - [Gleam & Lustre Code Tour](CODE_TOUR.md)
 - [Web Application Studio](#web-application-studio)
-  - [Key Features in v0.2.1](#key-features-in-v021)
+  - [Key Features in v0.2.2](#key-features-in-v022)
   - [Real-Time Stereo Separation Modes](#real-time-stereo-separation-modes)
   - [Hardware-Accurate Master Volume](#hardware-accurate-master-volume)
+  - [Interactive Song Seeking & Progress Bar](#interactive-song-seeking--progress-bar)
   - [Smart Song Completion & Transport Reset](#smart-song-completion--transport-reset)
   - [Shareable Deep Links & The Mod Archive](#shareable-deep-links--the-mod-archive)
   - [Mobile & Touch-Friendly Studio](#mobile--touch-friendly-studio)
@@ -75,17 +76,19 @@ At the same time, tracker replay is famously nuanced, full of undocumented hardw
 
 The web application provides a complete visual workspace and audio player running at [octetta.github.io/mod-to-skode](https://octetta.github.io/mod-to-skode/).
 
-### Key Features in v0.2.1
+### Key Features in v0.2.2
 
 1. **Instant Drag-and-Drop Loading**: Drop any `.mod` file anywhere on the screen, select a file via dialog, or load from the built-in library.
-2. **Real-Time Stereo Separation Switcher**: Toggle dynamically between `🎧 75% Headphone`, `🔊 100% Amiga Hardware`, and `📻 Mono 0%` during active playback without audio glitches or pauses.
-3. **Master Volume Slider**: Real-time gain control in decibels (`V#`) from `-40 dB` to `+6 dB` (default: `-6 dB`).
-4. **Smart Song Completion**: Automatic playback detection via sentinel downbeat events and loop-wrap tracking, smoothly stopping and resetting transport controls when a song finishes.
-5. **The Mod Archive Explorer**: Explore random tracker gems on demand with the `🎲 Random from ModArchive` button.
-6. **Shareable Deep Links**: Share links with `?url=...`, `?mod=the_hunter`, or `?id=172266` to let friends immediately listen to tracks, backed by offline fallback copies.
-7. **Mobile-Responsive Studio UI**: Tailored dynamic layout (`100dvh`) with touch-friendly controls, responsive metadata grids, and swipeable tabs on iPhone and Android.
-8. **Sample Auditioning**: Preview individual 16-bit WAV samples right inside the instrument table when playback is stopped.
-9. **Direct ZIP Archive Export**: Download a ready-to-mount ZIP package (`main.sk` + samples) for offline performance or mounting into Skode via `%z archive.zip`.
+2. **Interactive Song Seeking & Progress Scrubbing**: Click or drag anywhere along the playback progress bar to jump seamlessly to any step in the module during active playback, or seek while stopped to start from that position.
+3. **Pop-Free Load & Reset**: Fully eliminated audio pops when loading modules or resetting playback through graceful silence ramps and un-triggered voice initialization.
+4. **Expanded Master Volume Slider**: Real-time gain control in decibels (`V#`) with expanded headroom from `-40 dB` up to `+18 dB` (default: `-6 dB`).
+5. **Real-Time Stereo Separation Switcher**: Toggle dynamically between `🎧 75% Headphone`, `🔊 100% Amiga Hardware`, and `📻 Mono 0%` during active playback without audio glitches or pauses.
+6. **Smart Song Completion**: Automatic playback detection via sentinel downbeat events and loop-wrap tracking, smoothly stopping and resetting transport controls when a song finishes.
+7. **The Mod Archive Explorer**: Explore random tracker gems on demand with the `🎲 Random from ModArchive` button.
+8. **Shareable Deep Links**: Share links with `?url=...`, `?mod=the_hunter`, or `?id=172266` to let friends immediately listen to tracks, backed by offline fallback copies.
+9. **Mobile-Responsive Studio UI**: Tailored dynamic layout (`100dvh`) with touch-friendly controls, responsive metadata grids, and swipeable tabs on iPhone and Android.
+10. **Sample Auditioning**: Preview individual 16-bit WAV samples right inside the instrument table when playback is stopped.
+11. **Direct ZIP Archive Export**: Download a ready-to-mount ZIP package (`main.sk` + samples) for offline performance or mounting into Skode via `%z archive.zip`.
 
 ---
 
@@ -95,7 +98,7 @@ The original Commodore Amiga audio hardware (the Paula custom chip) featured fou
 - **Left Channel Output**: Channels 0 and 3
 - **Right Channel Output**: Channels 1 and 2
 
-While this hard-panned stereo separation sounds brilliant on stereo hi-fi speakers, it can cause severe listening fatigue on modern headphones. In `v0.2.1`, `mod-to-skode` offers three stereo profiles:
+While this hard-panned stereo separation sounds brilliant on stereo hi-fi speakers, it can cause severe listening fatigue on modern headphones. In `v0.2.2`, `mod-to-skode` offers three stereo profiles:
 
 | Mode | Left Channels (0, 3) | Right Channels (1, 2) | Best For |
 | :--- | :---: | :---: | :--- |

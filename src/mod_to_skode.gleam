@@ -25,8 +25,8 @@ import mod_to_skode/types.{
   ModArchiveFetchStarted, ModArchiveInfo, ModArchiveLoaded, Model, PanicClicked,
   PauseClicked, PlayClicked, PlaybackEnded, PlaybackStepChanged,
   PreviewSampleClicked, RandomModArchiveClicked, ResetClicked, ResumeClicked,
-  StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono, StopClicked,
-  TabSelected, ToggleReplClicked,
+  SeekStep, StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono,
+  StopClicked, TabSelected, ToggleReplClicked,
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,12 @@ fn js_load_and_play_skode(
   main_sk: String,
   samples: List(#(String, BitArray)),
   total_rows: Int,
+  start_step: Int,
+  num_channels: Int,
 ) -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "seekToStep")
+fn js_seek_to_step(step: Int, num_channels: Int) -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "pausePlayback")
 fn js_pause_playback() -> Nil
@@ -181,10 +186,22 @@ fn play_effect(
   main_sk: String,
   samples: List(#(String, BitArray)),
   total_rows: Int,
+  start_step: Int,
+  num_channels: Int,
 ) -> Effect(Msg) {
   effect.from(fn(_dispatch) {
-    js_load_and_play_skode(main_sk, samples, total_rows)
+    js_load_and_play_skode(
+      main_sk,
+      samples,
+      total_rows,
+      start_step,
+      num_channels,
+    )
   })
+}
+
+fn seek_effect(step: Int, num_channels: Int) -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_seek_to_step(step, num_channels) })
 }
 
 fn pause_effect() -> Effect(Msg) {
@@ -396,10 +413,15 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               ..model,
               is_playing: True,
               is_paused: False,
-              current_step: 0,
               status_text: "Playing in Skred WASM...",
             ),
-            play_effect(res.skode_text, res.samples, res.total_rows),
+            play_effect(
+              res.skode_text,
+              res.samples,
+              res.total_rows,
+              model.current_step,
+              res.num_channels,
+            ),
           )
         }
         None -> #(model, effect.none())
@@ -724,6 +746,25 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         set_master_volume_effect(vol),
       )
     }
+
+    SeekStep(step) -> {
+      let valid_step = case model.conversion {
+        Some(res) -> int.min(step, int.max(0, res.total_rows - 1))
+        None -> 0
+      }
+      let n_ch = case model.conversion {
+        Some(res) -> res.num_channels
+        None -> 4
+      }
+      #(
+        Model(
+          ..model,
+          current_step: valid_step,
+          status_text: "Seek to step " <> int.to_string(valid_step + 1) <> ".",
+        ),
+        seek_effect(valid_step, n_ch),
+      )
+    }
   }
 }
 
@@ -757,7 +798,7 @@ fn view_header(model: Model) -> Element(Msg) {
   html.header([class("app-header")], [
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
-      html.span([class("badge-version")], [text("v0.2.1")]),
+      html.span([class("badge-version")], [text("v0.2.2")]),
       html.span([class("badge-engine")], [text("Skred v" <> model.engine_version)]),
     ]),
     html.div([class("header-controls")], [
@@ -1145,6 +1186,25 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
             ],
             [],
           ),
+          html.input([
+            type_("range"),
+            attribute.min("0"),
+            attribute.max(int.to_string(int.max(1, total_rows - 1))),
+            attribute.step("1"),
+            attribute.value(int.to_string(cur_step)),
+            attribute.title(
+              "Click or drag to jump anywhere in the track (Step #"
+              <> int.to_string(cur_step + 1)
+              <> ")",
+            ),
+            class("playback-progress-slider"),
+            event.on_input(fn(val_str) {
+              case int.parse(val_str) {
+                Ok(step) -> SeekStep(step)
+                Error(_) -> SeekStep(0)
+              }
+            }),
+          ]),
         ]),
       ])
     }
@@ -1203,7 +1263,7 @@ fn view_volume_slider(model: Model) -> Element(Msg) {
     html.input([
       type_("range"),
       attribute.min("-40"),
-      attribute.max("6"),
+      attribute.max("18"),
       attribute.step("1"),
       attribute.value(int.to_string(model.master_volume)),
       attribute.title("Master volume (" <> vol_str <> ") - Skode V# command"),
@@ -1320,7 +1380,7 @@ fn view_metadata_bar(model: Model, mod_file: ModFile) -> Element(Msg) {
     meta_item("DURATION", duration_str),
     meta_item("LENGTH", rows_str),
     meta_item("PATTERNS", int.to_string(list.length(mod_file.patterns))),
-    meta_item("VERSION", "v0.2.1"),
+    meta_item("VERSION", "v0.2.2"),
   ]
 
   html.div([class("meta-bar")], list.append(base_items, source_items))
@@ -1673,7 +1733,7 @@ fn view_footer(model: Model) -> Element(Msg) {
         [text("ModArchive ↗")],
       ),
       html.span([class("footer-separator")], [text("·")]),
-      html.span([class("version-tag")], [text("v0.2.1")]),
+      html.span([class("version-tag")], [text("v0.2.2")]),
     ]),
   ])
 }

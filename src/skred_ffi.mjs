@@ -497,11 +497,12 @@ export function registerPlaybackListener(onStep, onEnd) {
   playbackEndedCallback = onEnd;
 }
 
-export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
+export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep = 0, numChannels = 4) {
+  const initialStep = typeof startStep === "number" ? Math.max(0, Math.floor(startStep)) : 0;
   activeSongTotalSteps = typeof totalSteps === "number" ? totalSteps : 0;
   isPlaybackActive = true;
   isPlaybackPaused = false;
-  lastReportedStep = -1;
+  lastReportedStep = initialStep > 0 ? initialStep : -1;
 
   if (currentPreviewAudio) {
     try {
@@ -522,11 +523,8 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
     return;
   }
 
-  // 1. Immediately stop previous playback, unmount previous zip, clear all patterns (Y-1) and voices (S-1)
-  executeSkredCommand("stop");
-  executeSkredCommand("%zu");
-  executeSkredCommand("Y-1");
-  executeSkredCommand("S-1");
+  // 1. Immediately silence previous playback smoothly before modifying VFS
+  executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
 
   createZipArchive(mainSkText, samplesList, (_blob, zipData) => {
     if (!zipData) {
@@ -542,10 +540,7 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
       try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
       // Clean engine state right before mounting new zip
-      executeSkredCommand("stop");
-      executeSkredCommand("%zu");
-      executeSkredCommand("Y-1");
-      executeSkredCommand("S-1");
+      executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
 
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
       console.log("[mod-to-skode] Mounting song.zip (%z)...");
@@ -556,11 +551,26 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
       const rYc = executeSkredCommand("y0 yc1;");
       const rVol = executeSkredCommand(`V${currentMasterVolume}`);
       const rPlay = executeSkredCommand("play");
-      console.log("[mod-to-skode] Playback triggered:", { rZip, rYc, rVol, rPlay });
+      if (initialStep > 0) {
+        seekToStep(initialStep, numChannels);
+      }
+      console.log("[mod-to-skode] Playback triggered:", { rZip, rYc, rVol, rPlay, initialStep });
     } catch (err) {
       console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
     }
   });
+}
+
+export function seekToStep(step, numChannels = 4) {
+  const s = Math.max(0, Math.floor(step));
+  lastReportedStep = s;
+  const n = typeof numChannels === "number" && numChannels > 0 ? numChannels : 4;
+  let cmds = [];
+  for (let c = 0; c <= n; c++) {
+    cmds.push(`y${c} zg ${s};`);
+  }
+  cmds.push(`y127 zg ${s};`);
+  executeSkredCommand(cmds.join(" "));
 }
 
 export function pausePlayback() {
@@ -593,10 +603,7 @@ export function stopPlayback() {
   isPlaybackPaused = false;
   lastReportedStep = -1;
   ensureAudioContext();
-  executeSkredCommand("stop");
-  executeSkredCommand("%zu");
-  executeSkredCommand("Y-1");
-  executeSkredCommand("S-1");
+  executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
 }
 
 export function previewSample(rawBitArray) {

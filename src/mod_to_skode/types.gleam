@@ -108,4 +108,5 @@ pub type Msg {
   ModArchiveFetchFailed(String)
   StereoModeChanged(StereoMode)
   MasterVolumeChanged(Int)
+  SeekStep(Int)
 }
