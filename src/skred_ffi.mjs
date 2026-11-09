@@ -37,6 +37,7 @@ const MAX_EVENTS_BATCH = 64;
 let playbackStepCallback = null;
 let playbackEndedCallback = null;
 let activeSongTotalSteps = 0;
+let activeSongNumChannels = 4;
 let isPlaybackActive = false;
 let isPlaybackPaused = false;
 let lastReportedStep = -1;
@@ -500,6 +501,7 @@ export function registerPlaybackListener(onStep, onEnd) {
 export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep = 0, numChannels = 4) {
   const initialStep = typeof startStep === "number" ? Math.max(0, Math.floor(startStep)) : 0;
   activeSongTotalSteps = typeof totalSteps === "number" ? totalSteps : 0;
+  activeSongNumChannels = typeof numChannels === "number" && numChannels > 0 ? numChannels : 4;
   isPlaybackActive = true;
   isPlaybackPaused = false;
   lastReportedStep = initialStep > 0 ? initialStep : -1;
@@ -561,16 +563,19 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
   });
 }
 
-export function seekToStep(step, numChannels = 4) {
+export function seekToStep(step, numChannels) {
   const s = Math.max(0, Math.floor(step));
   lastReportedStep = s;
-  const n = typeof numChannels === "number" && numChannels > 0 ? numChannels : 4;
+  const n = typeof numChannels === "number" && numChannels > 0 ? numChannels : activeSongNumChannels;
   let cmds = [];
   for (let c = 0; c <= n; c++) {
     cmds.push(`y${c} zg ${s};`);
   }
   cmds.push(`y127 zg ${s};`);
   executeSkredCommand(cmds.join(" "));
+  if (playbackStepCallback && activeSongTotalSteps > 0) {
+    playbackStepCallback(s, activeSongTotalSteps);
+  }
 }
 
 export function pausePlayback() {

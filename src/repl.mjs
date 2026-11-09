@@ -1,6 +1,6 @@
 // Interactive Skred REPL Console for mod-to-skode
 // Accessible via Ctrl+~ (or Ctrl+`) and UI button
-import { executeSkredCommand, ensureEngineRunning } from "./skred_ffi.mjs";
+import { executeSkredCommand, ensureEngineRunning, seekToStep } from "./skred_ffi.mjs";
 
 let replContainer = null;
 let replOutput = null;
@@ -82,10 +82,18 @@ function handleCommand(cmd) {
 
   // Handle special REPL meta-commands
   const lower = cmd.toLowerCase();
+  const seekMatch = cmd.match(/^(-?seek|goto)\s+(\d+)$/i);
+  if (seekMatch) {
+    const targetStep = parseInt(seekMatch[2], 10);
+    seekToStep(targetStep);
+    appendReplOutput("success", `✓ Seeked song to Step ${targetStep + 1} (step index ${targetStep})`);
+    return;
+  }
+
   if (lower === "-help" || lower === "-?") {
     appendReplOutput(
       "info",
-      `=== SKRED v0.82.0 COMMAND REFERENCE ===
+      `=== SKRED v0.83.0 COMMAND REFERENCE ===
 • Voices & Waves:
   v<0..255>       Select voice (e.g. 'v0')
   w<0..999>       Set waveform / sample:
@@ -112,6 +120,8 @@ function handleCommand(cmd) {
   M <bpm> <divs>  Tempo (e.g. 'M 125 96')
   play / stop     Start / halt pattern playback
   Z2 / Z3         Pause / resume playback
+  zg <step>       Jump active pattern step (e.g. 'zg 16')
+  -seek <step>    Seek song across all tracks to step (e.g. '-seek 64')
   Y-1             Reset all pattern tracks
   %z [file.zip]   Mount zip archive containing song.sk and waves
 
@@ -119,6 +129,7 @@ function handleCommand(cmd) {
   -help / -?      Show this cheat sheet
   -clear / -cls   Clear terminal screen
   -status         Show engine status
+  -seek <step>    Seek song across all channels to step
   -panic          Emergency silence (S-1; Y-1; stop)`
     );
     return;
@@ -247,6 +258,10 @@ function explainSkodeCommand(cmd, exitCode) {
       return "✓ Playback: Paused (Z2)";
     } else if (part.toLowerCase() === "z3") {
       return "✓ Playback: Resumed (Z3)";
+    } else if (/^zg\s*(\d+)$/i.test(part) || /^zg(\d+)$/i.test(part)) {
+      const step = part.replace(/^zg\s*/i, "");
+      details.push(`Jump Pattern Step: ${step} (zg)`);
+      sawAction = true;
     } else if (part.toLowerCase() === "s-1") {
       return "✓ Silenced all voices (S-1)";
     } else if (part.toLowerCase() === "y-1") {
@@ -299,6 +314,7 @@ export function createReplDom() {
       <button class="repl-chip" data-cmd="V -6">V -6</button>
       <button class="repl-chip" data-cmd="play">play</button>
       <button class="repl-chip" data-cmd="stop">stop</button>
+      <button class="repl-chip" data-cmd="-seek 0">seek 0</button>
       <button class="repl-chip" data-cmd="S-1">S-1</button>
       <button class="repl-chip" data-cmd="-status">-status</button>
       <button class="repl-chip" data-cmd="-panic">-panic</button>
