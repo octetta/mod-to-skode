@@ -12,18 +12,31 @@
   <script>
     window.Module = window.Module || {};
     window.__skredStdout = [];
+    window.__onSkredPrint = null;
     window.Module.print = function(...args) {
       const line = args.join(" ");
       window.__skredStdout.push(line);
+      if (typeof window.__onSkredPrint === "function") {
+        try { window.__onSkredPrint("out", line); } catch(e) {}
+      }
       console.log("[SKRED OUT]", ...args);
     };
     window.Module.printErr = function(...args) {
       const line = args.join(" ");
       window.__skredStdout.push("[ERR] " + line);
+      if (typeof window.__onSkredPrint === "function") {
+        try { window.__onSkredPrint("err", line); } catch(e) {}
+      }
       console.error("[SKRED ERR]", ...args);
     };
     window.Module.locateFile = function(path) {
-      return new URL("vendor/skred/" + path, window.location.href).href;
+      let p = window.location.pathname;
+      if (/\.[a-zA-Z0-9]+$/.test(p)) {
+        p = p.substring(0, p.lastIndexOf("/") + 1);
+      } else if (!p.endsWith("/")) {
+        p = p + "/";
+      }
+      return new URL("vendor/skred/" + path, new URL(p, window.location.origin)).href;
     };
   </script>
   <script src="./vendor/skred/skred_api.js"></script>

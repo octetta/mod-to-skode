@@ -26,7 +26,7 @@ import mod_to_skode/types.{
   PauseClicked, PlayClicked, PlaybackEnded, PlaybackStepChanged,
   PreviewSampleClicked, RandomModArchiveClicked, ResetClicked, ResumeClicked,
   StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono, StopClicked,
-  TabSelected,
+  TabSelected, ToggleReplClicked,
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,9 @@ fn js_stop_playback() -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "panicEngine")
 fn js_panic_engine() -> Nil
+
+@external(javascript, "./skred_ffi.mjs", "toggleRepl")
+fn js_toggle_repl() -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "previewSample")
 fn js_preview_sample(wav: BitArray) -> Nil
@@ -198,6 +201,10 @@ fn stop_effect() -> Effect(Msg) {
 
 fn panic_effect() -> Effect(Msg) {
   effect.from(fn(_dispatch) { js_panic_engine() })
+}
+
+fn toggle_repl_effect() -> Effect(Msg) {
+  effect.from(fn(_dispatch) { js_toggle_repl() })
 }
 
 fn preview_sample_effect(wav: BitArray) -> Effect(Msg) {
@@ -497,6 +504,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       )
     }
 
+    ToggleReplClicked -> {
+      #(model, toggle_repl_effect())
+    }
+
     DownloadZipClicked -> {
       case model.conversion, model.active_file {
         Some(res), Some(mod_file) -> {
@@ -767,6 +778,14 @@ fn view_header(model: Model) -> Element(Msg) {
           }),
         ]),
       ]),
+      html.button(
+        [
+          class("btn btn-terminal btn-sm"),
+          event.on_click(ToggleReplClicked),
+          attribute.title("Toggle Skred Interactive REPL (Ctrl+~)"),
+        ],
+        [text(">_ REPL")],
+      ),
       html.button(
         [class("btn btn-danger btn-sm"), event.on_click(PanicClicked)],
         [

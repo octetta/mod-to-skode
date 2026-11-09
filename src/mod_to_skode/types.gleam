@@ -94,6 +94,7 @@ pub type Msg {
   ResetClicked
   TabSelected(String)
   PanicClicked
+  ToggleReplClicked
   LoadDemo(url: String, filename: String)
   RandomModArchiveClicked
   ModArchiveFetchStarted(title: String, artist: String, id: Int)

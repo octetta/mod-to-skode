@@ -3,6 +3,20 @@
 
 import { zip } from "#vendor/fflate.mjs";
 import { BitArray } from "./gleam.mjs";
+import { createReplDom, toggleRepl, openRepl, closeRepl, appendReplOutput } from "./repl.mjs";
+
+export { toggleRepl, openRepl, closeRepl, appendReplOutput };
+
+export function getAppBaseUrl() {
+  if (typeof window === "undefined") return "/";
+  let path = window.location.pathname;
+  if (/\.[a-zA-Z0-9]+$/.test(path)) {
+    path = path.substring(0, path.lastIndexOf("/") + 1);
+  } else if (!path.endsWith("/")) {
+    path = path + "/";
+  }
+  return new URL(path, window.location.origin).href;
+}
 
 const win = typeof window !== "undefined" ? window : globalThis;
 
@@ -86,12 +100,28 @@ export function initEngine(callback) {
   win.Module = win.Module || {};
   win.Module.locateFile = function (path) {
     if (typeof window !== "undefined") {
-      return new URL("vendor/skred/" + path, window.location.href).href;
+      return new URL("vendor/skred/" + path, getAppBaseUrl()).href;
     }
     return "/vendor/skred/" + path;
   };
 
-  setupStdoutHook(win.Module);
+  createReplDom();
+
+  const prevPrint = win.Module.print;
+  win.Module.print = function (...args) {
+    if (prevPrint) prevPrint.apply(win.Module, args);
+    const line = args.join(" ");
+    appendReplOutput("out", line);
+    console.log("[skred]", line);
+  };
+
+  const prevPrintErr = win.Module.printErr;
+  win.Module.printErr = function (...args) {
+    if (prevPrintErr) prevPrintErr.apply(win.Module, args);
+    const line = args.join(" ");
+    appendReplOutput("err", line);
+    console.warn("[skred]", line);
+  };
 
   let initializedDone = false;
   const finishInit = () => {
@@ -185,9 +215,17 @@ export function ensureEngineRunning() {
   if (!M) return false;
   ensureAudioContext();
   if (typeof M._skred_audio_running === "function" && M._skred_audio_running()) {
+    engineStarted = true;
+    flushCommandQueue();
     return true;
   }
   try {
+    if (win.Module && win.Module.FS) {
+      try { win.Module.FS.mkdir("/waves"); } catch (e) {}
+      try { win.Module.FS.mkdir("waves"); } catch (e) {}
+      try { win.Module.FS.mkdir("/samples"); } catch (e) {}
+      try { win.Module.FS.mkdir("samples"); } catch (e) {}
+    }
     if (typeof M._skred_enumerate_devices === "function") {
       M._skred_enumerate_devices(0);
     }
@@ -197,13 +235,15 @@ export function ensureEngineRunning() {
     }
     if (typeof M._skred_start === "function") {
       const res = M._skred_start(128, 256, -1);
-      if (res === 0) {
-        engineStarted = true;
-        if (typeof M._skred_logger === "function") M._skred_logger(1);
-        startWasmEventPump(M);
-        return true;
-      }
+      console.log("[mod-to-skode] _skred_start returned:", res);
+      engineStarted = (res === 0);
     }
+    if (typeof M._skred_logger === "function") {
+      M._skred_logger(1);
+    }
+    startWasmEventPump(M);
+    flushCommandQueue();
+    return engineStarted;
   } catch (e) {
     console.warn("[mod-to-skode] ensureEngineRunning warning:", e);
   }
@@ -323,11 +363,11 @@ function startWasmEventPump(M) {
 
 function flushCommandQueue() {
   const M = getWasmModule();
-  if (!M || !engineStarted) return;
+  if (!M) return;
   while (commandQueue.length > 0) {
     const cmd = commandQueue.shift();
     try {
-      M.ccall("skred_command", "number", ["string"], [cmd]);
+      executeSkredCommand(cmd);
     } catch (e) {
       console.error("[mod-to-skode] Error executing queued command:", cmd, e);
     }
@@ -336,17 +376,48 @@ function flushCommandQueue() {
 
 export function executeSkredCommand(cmd) {
   const M = getWasmModule();
-  if (M && engineStarted) {
-    try {
-      return M.ccall("skred_command", "number", ["string"], [cmd]);
-    } catch (e) {
-      console.error("[mod-to-skode] Error executing command:", cmd, e);
-      return -1;
-    }
-  } else {
+  if (!M) {
     commandQueue.push(cmd);
     return 0;
   }
+
+  ensureAudioContext();
+  if (typeof M._skred_logger === "function") {
+    try { M._skred_logger(1); } catch (e) {}
+  }
+
+  let res = 0;
+  if (typeof M.ccall === "function") {
+    try {
+      res = M.ccall("skred_command", "number", ["string"], [cmd]);
+    } catch (err) {
+      console.warn("[mod-to-skode] Error executing skred command:", err);
+      return -1;
+    }
+  } else if (typeof M._skred_command === "function" && typeof M.allocateUTF8 === "function") {
+    try {
+      const ptr = M.allocateUTF8(cmd);
+      res = M._skred_command(ptr);
+      if (typeof M._free === "function") M._free(ptr);
+    } catch (err) {
+      console.warn("[mod-to-skode] Error executing skred command ptr:", err);
+      return -1;
+    }
+  }
+
+  if (typeof M._skred_log === "function" && typeof M.UTF8ToString === "function") {
+    try {
+      const logPtr = M._skred_log();
+      if (logPtr) {
+        const text = M.UTF8ToString(logPtr);
+        if (text && text.trim().length > 0) {
+          appendReplOutput("out", text.trim());
+        }
+      }
+    } catch (e) {}
+  }
+
+  return res;
 }
 
 export function sendCommand(cmd) {
@@ -501,6 +572,9 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
     }
 
     try {
+      ensureAudioContext();
+      ensureEngineRunning();
+
       try { M.FS.writeFile("/song.zip", zipData); } catch (e) {}
       try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
@@ -667,7 +741,7 @@ export function registerFileDrop(callback) {
 export function loadUrlMod(url, filename, callback) {
   const targetUrl =
     typeof window !== "undefined"
-      ? new URL(url, window.location.href).href
+      ? new URL(url, getAppBaseUrl()).href
       : url;
   fetch(targetUrl)
     .then((res) => {
@@ -828,8 +902,8 @@ export function checkInitialUrl(onStart, onSuccess, onError) {
     if (onStart) onStart(catalogTrack.title, catalogTrack.artist, catalogTrack.id);
 
     const primaryUrl = `https://api.modarchive.org/downloads.php?moduleid=${catalogTrack.id}#${catalogTrack.filename}`;
-    const fallbackLocalUrl = `demos/${catalogTrack.filename}`;
-    const safetyLocalUrl = `demos/space_debris.mod`;
+    const fallbackLocalUrl = typeof window !== "undefined" ? new URL(`demos/${catalogTrack.filename}`, getAppBaseUrl()).href : `demos/${catalogTrack.filename}`;
+    const safetyLocalUrl = typeof window !== "undefined" ? new URL(`demos/space_debris.mod`, getAppBaseUrl()).href : `demos/space_debris.mod`;
 
     fetch(primaryUrl)
       .then((res) => {
@@ -872,7 +946,7 @@ export function checkInitialUrl(onStart, onSuccess, onError) {
   let filename = "module.mod";
 
   try {
-    const parsed = new URL(raw, window.location.href);
+    const parsed = new URL(raw, getAppBaseUrl());
     targetUrl = parsed.href;
     const pathParts = parsed.pathname.split("/");
     const lastPart = pathParts[pathParts.length - 1];
@@ -896,7 +970,8 @@ export function checkInitialUrl(onStart, onSuccess, onError) {
     })
     .catch((err) => {
       console.warn("[mod-to-skode] Remote URL failed, falling back to Space Debris demo:", err);
-      fetch("demos/space_debris.mod")
+      const safetyUrl = typeof window !== "undefined" ? new URL("demos/space_debris.mod", getAppBaseUrl()).href : "demos/space_debris.mod";
+      fetch(safetyUrl)
         .then((res) => res.arrayBuffer())
         .then((buf) => {
           const bitArr = new BitArray(new Uint8Array(buf));
