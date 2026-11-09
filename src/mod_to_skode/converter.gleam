@@ -748,10 +748,11 @@ pub fn convert_with_options(
         <> stop_cmds
         <> "] /ceb 4 127\n\n/cer 1\n\n"
 
-      let play_pats =
-        list.map(make_range(0, nch), fn(c) { "y" <> int.to_string(c) <> " z1" })
+      let pat_list =
+        list.map(make_range(0, nch), int.to_string)
+        |> list.append(["127"])
         |> string.join(" ")
-      let play_cmds = "?ce! /cer 1 Z0 Z! " <> play_pats <> " y127 z1"
+      let play_cmds = "?ce! /cer 1 Z0 Z! (" <> pat_list <> ") Z>"
       let efx_cmds =
         "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
       let nofx_cmds =
