@@ -58,9 +58,28 @@ function getWasmModule() {
   return null;
 }
 
+export function getEngineVersion() {
+  const M = getWasmModule();
+  if (M) {
+    if (typeof M.ccall === "function") {
+      try {
+        const v = M.ccall("skred_version", "string", [], []);
+        if (v) return v;
+      } catch (e) {}
+    }
+    if (typeof M._skred_version === "function" && typeof M.UTF8ToString === "function") {
+      try {
+        const ptr = M._skred_version();
+        if (ptr) return M.UTF8ToString(ptr);
+      } catch (e) {}
+    }
+  }
+  return "0.82.0";
+}
+
 export function initEngine(callback) {
   if (moduleReady) {
-    if (callback) callback(true);
+    if (callback) callback(true, getEngineVersion());
     return;
   }
 
@@ -122,10 +141,10 @@ export function initEngine(callback) {
       startWasmEventPump(win.Module);
       flushCommandQueue();
 
-      if (callback) callback(true);
+      if (callback) callback(true, getEngineVersion());
     } catch (err) {
       console.error("[mod-to-skode] Failed to start Skred engine:", err);
-      if (callback) callback(moduleReady);
+      if (callback) callback(moduleReady, getEngineVersion());
     }
   };
 

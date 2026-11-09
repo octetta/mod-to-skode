@@ -1,7 +1,7 @@
 //// # Mod-to-Skode In-Browser Audio Converter & Tracker Web App
 ////
 //// Runs client-side in the browser, converts Amiga / ProTracker MOD files
-//// to Skode 0.80.0 scripts, packages them with WAV samples into a ZIP archive,
+//// to Skode scripts, packages them with WAV samples into a ZIP archive,
 //// and allows instant playback directly in the Skred WASM audio engine.
 
 import gleam/dict
@@ -34,7 +34,7 @@ import mod_to_skode/types.{
 // ---------------------------------------------------------------------------
 
 @external(javascript, "./skred_ffi.mjs", "initEngine")
-fn js_init_engine(callback: fn(Bool) -> Nil) -> Nil
+fn js_init_engine(callback: fn(Bool, String) -> Nil) -> Nil
 
 @external(javascript, "./skred_ffi.mjs", "registerFileDrop")
 fn js_register_file_drop(callback: fn(String, BitArray) -> Nil) -> Nil
@@ -115,7 +115,9 @@ fn set_master_volume_effect(db: Int) -> Effect(Msg) {
 
 fn init_engine_effect() -> Effect(Msg) {
   effect.from(fn(dispatch) {
-    js_init_engine(fn(success) { dispatch(EngineStatusChanged(success)) })
+    js_init_engine(fn(success, version) {
+      dispatch(EngineStatusChanged(success, version))
+    })
   })
 }
 
@@ -218,6 +220,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
   let model =
     Model(
       engine_ready: False,
+      engine_version: "0.82.0",
       is_playing: False,
       is_paused: False,
       current_step: 0,
@@ -245,12 +248,15 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
 
 pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    EngineStatusChanged(ready) -> {
+    EngineStatusChanged(ready, version) -> {
       let status = case ready {
-        True -> "Skred 0.80.0 WASM engine ready."
+        True -> "Skred " <> version <> " WASM engine ready."
         False -> "Failed to initialize Skred WASM."
       }
-      #(Model(..model, engine_ready: ready, status_text: status), effect.none())
+      #(
+        Model(..model, engine_ready: ready, engine_version: version, status_text: status),
+        effect.none(),
+      )
     }
 
     FileDropped(filename, data) -> {
@@ -741,7 +747,7 @@ fn view_header(model: Model) -> Element(Msg) {
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
       html.span([class("badge-version")], [text("v0.2.0")]),
-      html.span([class("badge-engine")], [text("Skred v0.80.0")]),
+      html.span([class("badge-engine")], [text("Skred v" <> model.engine_version)]),
     ]),
     html.div([class("header-controls")], [
       html.div([class("engine-status")], [
@@ -919,7 +925,7 @@ fn view_drop_zone(model: Model) -> Element(Msg) {
       ),
       feature_card(
         "🎵 Dual-Track Audio",
-        "Unrolls MOD patterns with sub-tick accuracy and adaptive word-budget optimization for Skred 0.80.0.",
+        "Unrolls MOD patterns with sub-tick accuracy and adaptive word-budget optimization for Skred.",
       ),
       feature_card(
         "📦 Ready-to-Play ZIP",
@@ -1354,7 +1360,7 @@ fn view_embed_guide(_model: Model, mod_file: ModFile) -> Element(Msg) {
       ]),
       html.p([class("embed-desc")], [
         text(
-          "Follow these three steps to integrate the Skred v0.80.0 audio engine and play this converted module on your own website.",
+          "Follow these three steps to integrate the Skred audio engine and play this converted module on your own website.",
         ),
       ]),
     ]),
