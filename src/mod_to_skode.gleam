@@ -1060,7 +1060,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
     False ->
       html.button(
         [
-          class("btn btn-success btn-lg"),
+          class("btn btn-success btn-transport"),
           event.on_click(PlayClicked),
           attribute.disabled(model.conversion == None),
         ],
@@ -1071,7 +1071,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
         False ->
           html.button(
             [
-              class("btn btn-warning btn-lg"),
+              class("btn btn-warning btn-transport"),
               event.on_click(PauseClicked),
             ],
             [text("⏸ Pause")],
@@ -1079,7 +1079,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
         True ->
           html.button(
             [
-              class("btn btn-success btn-lg pulse-paused"),
+              class("btn btn-success btn-transport pulse-paused"),
               event.on_click(ResumeClicked),
             ],
             [text("▶ Resume")],
@@ -1092,7 +1092,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
     True ->
       html.button(
         [
-          class("btn btn-danger btn-lg"),
+          class("btn btn-danger btn-transport"),
           event.on_click(StopClicked),
         ],
         [text("⏹ Stop")],
@@ -1100,7 +1100,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
     False ->
       html.button(
         [
-          class("btn btn-secondary btn-lg"),
+          class("btn btn-secondary btn-transport"),
           attribute.disabled(True),
         ],
         [text("⏹ Stop")],
@@ -1218,7 +1218,7 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
         stop_btn,
         html.button(
           [
-            class("btn btn-primary btn-lg"),
+            class("btn btn-primary btn-transport"),
             event.on_click(DownloadZipClicked),
             attribute.disabled(model.conversion == None),
           ],
@@ -1226,14 +1226,17 @@ fn view_transport_bar(model: Model, _mod_file: ModFile) -> Element(Msg) {
         ),
         html.button(
           [
-            class("btn btn-modarchive btn-lg"),
+            class("btn btn-modarchive btn-transport"),
             event.on_click(RandomModArchiveClicked),
             attribute.disabled(model.is_converting),
           ],
           [text("🎲 Random MOD")],
         ),
         html.button(
-          [class("btn btn-secondary btn-lg"), event.on_click(ResetClicked)],
+          [
+            class("btn btn-secondary btn-transport"),
+            event.on_click(ResetClicked),
+          ],
           [text("⟲ New File")],
         ),
       ]),
