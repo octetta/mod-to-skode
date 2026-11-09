@@ -293,13 +293,14 @@ export function createReplDom() {
     <div id="skred-repl-output" class="repl-output"></div>
     <div class="repl-chips">
       <span class="repl-chip-label">Quick:</span>
-      <button class="repl-chip" data-cmd="v0 w100 a0 f440 l1">v0 Play w100</button>
-      <button class="repl-chip" data-cmd="v0 l0">v0 Gate OFF</button>
+      <button class="repl-chip" data-cmd="v0 w1 a0 f440 l1">Test Tone (A440)</button>
+      <button class="repl-chip" data-cmd="v0 l0">Gate OFF</button>
+      <button class="repl-chip" data-cmd="v0 w100 a0 f440 l1">Sample w100</button>
       <button class="repl-chip" data-cmd="V -6">V -6</button>
-      <button class="repl-chip" data-cmd="j1 k1200 q2.0">Lowpass 1.2k</button>
       <button class="repl-chip" data-cmd="play">play</button>
       <button class="repl-chip" data-cmd="stop">stop</button>
       <button class="repl-chip" data-cmd="S-1">S-1</button>
+      <button class="repl-chip" data-cmd="-status">-status</button>
       <button class="repl-chip" data-cmd="-panic">-panic</button>
       <button class="repl-chip" data-cmd="-help">-help</button>
     </div>

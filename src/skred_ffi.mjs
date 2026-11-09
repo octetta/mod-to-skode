@@ -130,52 +130,7 @@ export function initEngine(callback) {
     console.log("[mod-to-skode] Skred WASM runtime initialized.");
     moduleReady = true;
 
-    try {
-      setupStdoutHook(win.Module);
-
-      if (win.Module.FS) {
-        try { win.Module.FS.mkdir("/waves"); } catch (e) {}
-        try { win.Module.FS.mkdir("waves"); } catch (e) {}
-        try { win.Module.FS.mkdir("/samples"); } catch (e) {}
-        try { win.Module.FS.mkdir("samples"); } catch (e) {}
-      }
-
-      if (typeof win.Module._skred_enumerate_devices === "function") {
-        win.Module._skred_enumerate_devices(0);
-      }
-      if (typeof win.Module._skred_audio_select === "function") {
-        win.Module._skred_audio_select(0, 0);
-        win.Module._skred_audio_select(1, -2);
-      }
-
-      // Start engine with 128 buffer size, 256 voices, default port (-1)
-      if (typeof win.Module._skred_start === "function") {
-        const res = win.Module._skred_start(128, 256, -1);
-        console.log("[mod-to-skode] _skred_start returned:", res);
-        engineStarted = (res === 0);
-      }
-
-      if (typeof win.Module._skred_logger === "function") {
-        win.Module._skred_logger(1);
-      }
-
-      executeSkredCommand("stop");
-      executeSkredCommand("%zu");
-      executeSkredCommand("Y-1");
-      executeSkredCommand("S-1");
-      executeSkredCommand("V-6");
-
-      removeAudioUnlockListeners();
-      audioUnlocked = true;
-
-      startWasmEventPump(win.Module);
-      flushCommandQueue();
-
-      if (callback) callback(true, getEngineVersion());
-    } catch (err) {
-      console.error("[mod-to-skode] Failed to start Skred engine:", err);
-      if (callback) callback(moduleReady, getEngineVersion());
-    }
+    if (callback) callback(true, getEngineVersion());
   };
 
   const prevInit = win.Module.onRuntimeInitialized;
@@ -201,10 +156,15 @@ function ensureAudioContext() {
   if (win.AL && win.AL.currentCtx && win.AL.currentCtx.audioCtx && win.AL.currentCtx.audioCtx.state === "suspended") {
     win.AL.currentCtx.audioCtx.resume().catch(() => {});
   }
-  if (win.miniaudio && Array.isArray(win.miniaudio.devices)) {
-    for (const dev of win.miniaudio.devices) {
-      if (dev && dev.webaudio && dev.webaudio.state === "suspended") {
-        dev.webaudio.resume().catch(() => {});
+  if (win.miniaudio) {
+    if (typeof win.miniaudio.unlock === "function") {
+      try { win.miniaudio.unlock(); } catch (e) {}
+    }
+    if (Array.isArray(win.miniaudio.devices)) {
+      for (const dev of win.miniaudio.devices) {
+        if (dev && dev.webaudio && dev.webaudio.state === "suspended") {
+          dev.webaudio.resume().catch(() => {});
+        }
       }
     }
   }
@@ -241,6 +201,11 @@ export function ensureEngineRunning() {
     if (typeof M._skred_logger === "function") {
       M._skred_logger(1);
     }
+    executeSkredCommand("stop");
+    executeSkredCommand("%zu");
+    executeSkredCommand("Y-1");
+    executeSkredCommand("S-1");
+    executeSkredCommand("V" + currentMasterVolume);
     startWasmEventPump(M);
     flushCommandQueue();
     return engineStarted;
@@ -337,15 +302,13 @@ function startWasmEventPump(M) {
               }
             }
 
-            // Song Completion: event 4 (SKRED_CONTROL_EVENT_USER with id 127) or event 6 (SKRED_CONTROL_EVENT_PATTERN_END on pattern 0)
-            if (
-              isPlaybackActive &&
-              ((t === 4 && id === 127) || (t === 6 && p === 0))
-            ) {
+            // Song Completion: explicit end-of-song marker event 4 (SKRED_CONTROL_EVENT_USER with id 127)
+            if (isPlaybackActive && t === 4 && id === 127) {
               stopPlayback();
               if (playbackEndedCallback) {
                 playbackEndedCallback();
               }
+              return;
             }
           }
           if (currentEventSubscription) {
@@ -585,10 +548,12 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
       executeSkredCommand("S-1");
 
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
-      executeSkredCommand("%z [song.zip];");
-      executeSkredCommand("y0 yc1;");
-      executeSkredCommand(`V${currentMasterVolume}`);
-      executeSkredCommand("play");
+      console.log("[mod-to-skode] Mounting song.zip (%z)...");
+      const rZip = executeSkredCommand("%z [song.zip];");
+      const rYc = executeSkredCommand("y0 yc1;");
+      const rVol = executeSkredCommand(`V${currentMasterVolume}`);
+      const rPlay = executeSkredCommand("play");
+      console.log("[mod-to-skode] Playback triggered:", { rZip, rYc, rVol, rPlay });
     } catch (err) {
       console.error("[mod-to-skode] Error during loadAndPlaySkode:", err);
     }
