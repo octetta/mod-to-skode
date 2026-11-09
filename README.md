@@ -1,6 +1,6 @@
 # mod-to-skode
 
-[![Version](https://img.shields.io/badge/version-v0.2.0-blue.svg)](gleam.toml)
+[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](gleam.toml)
 [![Gleam](https://img.shields.io/badge/language-Gleam-ffaff3.svg)](https://gleam.run/)
 [![Lustre](https://img.shields.io/badge/frontend-Lustre-ff69b4.svg)](https://hexdocs.pm/lustre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -21,7 +21,7 @@ Available both as a **100% client-side web application** with in-browser WebAsse
 - [Welcome & Overview](#welcome--overview)
 - [Gleam & Lustre Code Tour](CODE_TOUR.md)
 - [Web Application Studio](#web-application-studio)
-  - [Key Features in v0.2.0](#key-features-in-v020)
+  - [Key Features in v0.2.1](#key-features-in-v021)
   - [Real-Time Stereo Separation Modes](#real-time-stereo-separation-modes)
   - [Hardware-Accurate Master Volume](#hardware-accurate-master-volume)
   - [Smart Song Completion & Transport Reset](#smart-song-completion--transport-reset)
@@ -75,7 +75,7 @@ At the same time, tracker replay is famously nuanced, full of undocumented hardw
 
 The web application provides a complete visual workspace and audio player running at [octetta.github.io/mod-to-skode](https://octetta.github.io/mod-to-skode/).
 
-### Key Features in v0.2.0
+### Key Features in v0.2.1
 
 1. **Instant Drag-and-Drop Loading**: Drop any `.mod` file anywhere on the screen, select a file via dialog, or load from the built-in library.
 2. **Real-Time Stereo Separation Switcher**: Toggle dynamically between `🎧 75% Headphone`, `🔊 100% Amiga Hardware`, and `📻 Mono 0%` during active playback without audio glitches or pauses.
@@ -95,7 +95,7 @@ The original Commodore Amiga audio hardware (the Paula custom chip) featured fou
 - **Left Channel Output**: Channels 0 and 3
 - **Right Channel Output**: Channels 1 and 2
 
-While this hard-panned stereo separation sounds brilliant on stereo hi-fi speakers, it can cause severe listening fatigue on modern headphones. In `v0.2.0`, `mod-to-skode` offers three stereo profiles:
+While this hard-panned stereo separation sounds brilliant on stereo hi-fi speakers, it can cause severe listening fatigue on modern headphones. In `v0.2.1`, `mod-to-skode` offers three stereo profiles:
 
 | Mode | Left Channels (0, 3) | Right Channels (1, 2) | Best For |
 | :--- | :---: | :---: | :--- |

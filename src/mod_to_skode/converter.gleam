@@ -589,12 +589,12 @@ pub fn convert_with_options(
           <> int.to_string(c + 1)
           <> "] vt w0 m0 n60 l1 B1 p"
           <> pan
-          <> " t0,0,1,0 s0.002,1 g0.001,2 g0 fbp24 a-100 F0 A0\n"
+          <> " t0,0,1,0 s0.002,1 g0.001,2 g0 fbp24 a-100 F-1 A-1\n"
           <> "v"
           <> lfo_str
           <> " [lfo "
           <> int.to_string(c + 1)
-          <> "] vt w0 m1 n60 l1 B1 t0,0,1,0 a-10 f20000 F0 A0\n"
+          <> "] vt w0 m1 n60 l1 B1 t0,0,1,0 a-10 f20000 F-1 A-1\n"
         })
 
       // Instrument definitions

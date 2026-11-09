@@ -73,7 +73,7 @@ fn parse_cli_args(args: List(String), opts: CliOptions) -> CliOptions {
 
 fn print_help() {
   print_stdout(
-    "mod2skode (Gleam Native QuickJS CLI) v0.2.0\n"
+    "mod2skode (Gleam Native QuickJS CLI) v0.2.1\n"
     <> "Converts ProTracker / FastTracker MOD music files to Skode scripts\n\n"
     <> "Usage:\n"
     <> "  mod2skode <input.mod> [options]\n\n"

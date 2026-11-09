@@ -549,7 +549,10 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps) {
 
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
       console.log("[mod-to-skode] Mounting song.zip (%z)...");
-      const rZip = executeSkredCommand("%z [song.zip];");
+      let rZip = executeSkredCommand("[/song.zip] %z;");
+      if (rZip !== 0) {
+        rZip = executeSkredCommand("%z [song.zip];");
+      }
       const rYc = executeSkredCommand("y0 yc1;");
       const rVol = executeSkredCommand(`V${currentMasterVolume}`);
       const rPlay = executeSkredCommand("play");
