@@ -25,6 +25,14 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 
+// ---- Versions ----
+
+/// Version of the Skode AST & parsing package.
+pub const version = "0.1.0"
+
+/// Upstream Pulp / Skred audio engine release version this AST aligns with.
+pub const pulp_version = "0.84.0"
+
 // ---- Types ----
 
 pub type Num {
