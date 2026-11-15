@@ -1,10 +1,12 @@
 import gleam/bit_array
 import gleam/float
+import gleam/list
 import gleam/string
 import gleeunit
 import gleeunit/should
 import mod_to_skode/converter.{convert, make_range, pcm8_to_wav, vol_to_db}
 import mod_to_skode/mod_parser.{channels_from_magic, parse, period_to_midi}
+import skode
 
 pub fn main() {
   gleeunit.main()
@@ -97,6 +99,19 @@ pub fn parse_synthetic_mod_test() {
   res.num_channels |> should.equal(4)
   res.total_rows |> should.equal(64)
   { res.duration_seconds >. 0.0 } |> should.be_true
+  let parsed_ops = skode.parse_ops(res.skode_text)
+  { parsed_ops != [] } |> should.be_true
+}
+
+pub fn skode_ast_validation_test() {
+  let ops = skode.parse_ops("v0 w15 f440 a-6 l1 t0.01,0.05 g0 HS(0 1)")
+  list.length(ops) |> should.equal(8)
+
+  let src = "v0 n60 l1; [lead] puts; G ( 0 1 2 )"
+  let prog = skode.parse_program(src)
+  let printed = skode.program_to_string(prog)
+  let reparsed = skode.parse_program(printed)
+  reparsed |> should.equal(prog)
 }
 
 fn list_map(items: List(a), f: fn(a) -> b) -> List(b) {
