@@ -244,7 +244,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
   let model =
     Model(
       engine_ready: False,
-      engine_version: "0.83.0",
+      engine_version: "0.84.0",
       is_playing: False,
       is_paused: False,
       current_step: 0,
@@ -278,7 +278,12 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         False -> "Failed to initialize Skred WASM."
       }
       #(
-        Model(..model, engine_ready: ready, engine_version: version, status_text: status),
+        Model(
+          ..model,
+          engine_ready: ready,
+          engine_version: version,
+          status_text: status,
+        ),
         effect.none(),
       )
     }
@@ -799,7 +804,9 @@ fn view_header(model: Model) -> Element(Msg) {
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
       html.span([class("badge-version")], [text("v0.2.2")]),
-      html.span([class("badge-engine")], [text("Skred v" <> model.engine_version)]),
+      html.span([class("badge-engine")], [
+        text("Skred v" <> model.engine_version),
+      ]),
     ]),
     html.div([class("header-controls")], [
       html.div([class("engine-status")], [

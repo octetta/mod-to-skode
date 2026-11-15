@@ -93,7 +93,7 @@ function handleCommand(cmd) {
   if (lower === "-help" || lower === "-?") {
     appendReplOutput(
       "info",
-      `=== SKRED v0.83.0 COMMAND REFERENCE ===
+      `=== SKRED v0.84.0 COMMAND REFERENCE ===
 • Voices & Waves:
   v<0..255>       Select voice (e.g. 'v0')
   w<0..999>       Set waveform / sample:
@@ -102,9 +102,11 @@ function handleCommand(cmd) {
                   w300..w304: Ksynth Bandlimited SID Waves
                   w6: Live White Noise (Continuous Audio RNG)
   a<db>           Set voice amplitude in dB (e.g. 'a0', 'a-6')
-  t<a,d,s,r>      Set ADSR envelope (e.g. 't0.001,0.01,1.0,0.05')
+  t<a,d,s,r>      Set ADSR envelope (e.g. 't0.001,0.01,1.0,0.05', 2-arg 't0.01,0.05', or flat 't')
+  g<time[,curve]> Set portamento / glide (or bare 'g' to clear)
   p<pan>          Set stereo pan -1.0 (L) to 1.0 (R), 0.0 = center
   n<note>         Trigger MIDI note number (0..127, e.g. 'n60' = C4)
+  i<note>         Trigger instrument note (or sentinels: 'i-' rest, 'i.' tie)
   f<hz>           Set frequency in Hz (e.g. 'f440')
   l<0|1>          Gate & Attack: l1 = Gate ON (Attack), l0 = Gate OFF (Release)
   c1,<duty>       CZ Phase-Distortion PWM (-0.98 to +0.98)
@@ -283,7 +285,7 @@ export function createReplDom() {
   if (typeof document === "undefined" || replContainer) return;
 
   const M = (typeof window !== "undefined" && window.Module) || (typeof globalThis !== "undefined" && globalThis.Module);
-  let engineVer = "0.83.0";
+  let engineVer = "0.84.0";
   if (M && typeof M.ccall === "function") {
     try {
       const v = M.ccall("skred_version", "string", [], []);
