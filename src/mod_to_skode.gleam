@@ -28,6 +28,8 @@ import mod_to_skode/types.{
   SeekStep, StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono,
   StopClicked, TabSelected, ToggleReplClicked,
 }
+import skode
+import skode/transport/wasm
 
 // ---------------------------------------------------------------------------
 // JavaScript FFI Declarations
@@ -114,7 +116,10 @@ fn js_set_master_volume(db: Int) -> Nil
 // ---------------------------------------------------------------------------
 
 fn send_command_effect(cmd: String) -> Effect(Msg) {
-  effect.from(fn(_dispatch) { js_send_command(cmd) })
+  effect.from(fn(_dispatch) {
+    let _ = wasm.send_text(cmd)
+    js_send_command(cmd)
+  })
 }
 
 fn set_master_volume_effect(db: Int) -> Effect(Msg) {
@@ -217,7 +222,10 @@ fn stop_effect() -> Effect(Msg) {
 }
 
 fn panic_effect() -> Effect(Msg) {
-  effect.from(fn(_dispatch) { js_panic_engine() })
+  effect.from(fn(_dispatch) {
+    let _ = wasm.send_text("O; DQ; Z0; S-1; Y-1;")
+    js_panic_engine()
+  })
 }
 
 fn toggle_repl_effect() -> Effect(Msg) {
@@ -244,7 +252,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
   let model =
     Model(
       engine_ready: False,
-      engine_version: "0.84.0",
+      engine_version: skode.pulp_version,
       is_playing: False,
       is_paused: False,
       current_step: 0,

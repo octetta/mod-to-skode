@@ -5,7 +5,7 @@
 [![Lustre](https://img.shields.io/badge/frontend-Lustre-ff69b4.svg)](https://hexdocs.pm/lustre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, interactive web studio, and playback engine for the **Skred 0.84.0** synthesizer and **Skode** live-coding sequencer.
+High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, interactive web studio, and playback engine for the **Skred 0.85.0** synthesizer and **Skode** live-coding sequencer.
 
 Available both as a **100% client-side web application** with in-browser WebAssembly playback and as a standalone **native CLI binary** (`bin/mod2skode`) compiled from pure Gleam via QuickJS for zero-dependency batch conversions and terminal workflows.
 
@@ -342,7 +342,7 @@ Developers can embed the Skred WebAssembly audio engine into any webpage, web ga
 ### 1. Copy Runtime Files
 Copy the following files into your web project:
 - `vendor/skred/skred_api.js` (vendored Emscripten glue runtime)
-- `vendor/skred/skred_api.wasm` (Skred v0.84.0 multi-threaded synthesizer core)
+- `vendor/skred/skred_api.wasm` (Skred v0.85.0 multi-threaded synthesizer core)
 - `coi-serviceworker.js` (provides Cross-Origin Isolation for `SharedArrayBuffer` on static hosts)
 
 ### 2. Include in HTML
@@ -473,7 +473,7 @@ make update-skred
 
 To pin to an explicit release version:
 ```bash
-make update-skred VERSION=0.84.0
+make update-skred VERSION=0.85.0
 ```
 
 ### Continuous Deployment
@@ -497,12 +497,13 @@ The project relies on pinned, deterministic dependencies across the Gleam, JavaS
 | **[Gleam](https://gleam.run/)** | `^1.19.2` | Primary language; compiles to ES module JavaScript |
 | **[Node.js](https://nodejs.org/)** | `^20.0.0` (tested `v26.12.0`) | Development server, package runner, and test environment |
 | **[GCC](https://gcc.gnu.org/) / Clang** | Standard C99 / GNU99 | Compiles QuickJS and links the standalone native CLI binary |
-| **[Skred Audio Engine](https://github.com/octetta/pulp)** | `v0.84.0` (via `SKRED_VERSION`) | Real-time multi-threaded WebAssembly audio synthesizer |
+| **[Skred Audio Engine](https://github.com/octetta/pulp)** | `v0.85.0` (via `SKRED_VERSION`) | Real-time multi-threaded WebAssembly audio synthesizer |
 
 ### Gleam Packages (`gleam.toml` & `manifest.toml`)
 
 | Package | Version | Description |
 | :--- | :--- | :--- |
+| **`skode`** | `^0.3.0` | Skode AST parser, printer, and WebAssembly transport |
 | **`gleam_stdlib`** | `1.0.5` | Standard library: algebraic data types, dicts, lists, bit arrays, results |
 | **`lustre`** | `5.7.1` | The Elm Architecture frontend framework for the reactive web application |
 | **`gleam_json`** | `3.1.0` | JSON encoding and decoding primitives |
@@ -522,7 +523,7 @@ The project relies on pinned, deterministic dependencies across the Gleam, JavaS
 | :--- | :--- | :--- |
 | **[QuickJS](https://bellard.org/quickjs/)** | Fabrice Bellard & Charlie Gordon | Embeddable C JS engine (`libquickjs.a` + `qjsc`) for standalone native binaries |
 | **[fflate](https://github.com/101arrowz/fflate)** | `v0.8.2` (Arjun Barrett) | Pure JavaScript synchronous and asynchronous Deflate/ZIP compression |
-| **Skred WASM Runtime** | `v0.84.0` (`octetta/pulp`) | `skred_api.js` and `skred_api.wasm` Emscripten WebAssembly runtime files |
+| **Skred WASM Runtime** | `v0.85.0` (`octetta/pulp`) | `skred_api.js` and `skred_api.wasm` Emscripten WebAssembly runtime files |
 
 ---
 
