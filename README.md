@@ -7,6 +7,8 @@
 
 High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, interactive web studio, and playback engine for the **Skred 0.85.0** synthesizer and **Skode** live-coding sequencer.
 
+> **Dogfooding the Skode Ecosystem**: `mod-to-skode` relies directly on the official **[`skode`](https://github.com/octetta/skode)** package (v0.3.0) for typed AST modeling, canonical script serialization, and direct WebAssembly engine dispatch (`skode/transport/wasm`), proving its real-world reliability on large-scale, multi-thousand-row music tracker data.
+
 Available both as a **100% client-side web application** with in-browser WebAssembly playback and as a standalone **native CLI binary** (`bin/mod2skode`) compiled from pure Gleam via QuickJS for zero-dependency batch conversions and terminal workflows.
 
 🌐 **Interactive Web Studio:** [octetta.github.io/mod-to-skode](https://octetta.github.io/mod-to-skode/)  
