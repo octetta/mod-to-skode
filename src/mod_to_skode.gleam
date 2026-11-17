@@ -811,7 +811,7 @@ fn view_header(model: Model) -> Element(Msg) {
   html.header([class("app-header")], [
     html.div([class("brand")], [
       html.h1([], [text("MOD TO SKODE")]),
-      html.span([class("badge-version")], [text("v0.2.2")]),
+      html.span([class("badge-version")], [text("v1.0.0")]),
       html.span([class("badge-engine")], [
         text("Skred v" <> model.engine_version),
       ]),
@@ -1398,7 +1398,7 @@ fn view_metadata_bar(model: Model, mod_file: ModFile) -> Element(Msg) {
     meta_item("DURATION", duration_str),
     meta_item("LENGTH", rows_str),
     meta_item("PATTERNS", int.to_string(list.length(mod_file.patterns))),
-    meta_item("VERSION", "v0.2.2"),
+    meta_item("VERSION", "v1.0.0"),
   ]
 
   html.div([class("meta-bar")], list.append(base_items, source_items))
@@ -1751,7 +1751,7 @@ fn view_footer(model: Model) -> Element(Msg) {
         [text("ModArchive ↗")],
       ),
       html.span([class("footer-separator")], [text("·")]),
-      html.span([class("version-tag")], [text("v0.2.2")]),
+      html.span([class("version-tag")], [text("v1.0.0")]),
     ]),
   ])
 }
