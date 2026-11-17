@@ -23,6 +23,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout skode dependency
+        uses: actions/checkout@v4
+        with:
+          repository: octetta/skode
+          path: .skode_dep
+
+      - name: Link skode sibling
+        run: ln -s "$GITHUB_WORKSPACE/.skode_dep" "$GITHUB_WORKSPACE/../skode"
+
       - name: Set up Erlang & Gleam
         uses: erlef/setup-beam@v1
         with:
