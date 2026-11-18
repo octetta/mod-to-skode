@@ -14,8 +14,8 @@ mkdir -p "${PUBLIC_DIR}"
 VERSION="${1:-${VERSION:-}}"
 
 if [ -z "${VERSION}" ]; then
-  echo "==> Checking latest release on github.com/octetta/pulp..."
-  LATEST_TAG=$(curl -s "https://api.github.com/repos/octetta/pulp/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+  echo "==> Checking latest release on github.com/octetta/sk3..."
+  LATEST_TAG=$(curl -s "https://api.github.com/repos/octetta/sk3/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
   if [ -n "${LATEST_TAG}" ]; then
     VERSION="${LATEST_TAG#v}"
     echo "==> Detected latest release: v${VERSION}"
@@ -23,20 +23,20 @@ if [ -z "${VERSION}" ]; then
     VERSION="$(tr -d '[:space:]' < "${VERSION_FILE}")"
     echo "==> Using pinned version from SKRED_VERSION: ${VERSION}"
   else
-    VERSION="0.80.0"
+    VERSION="1.0.0"
   fi
 fi
 
-# Strip leading 'v' if supplied (e.g. v0.80.0 -> 0.80.0)
+# Strip leading 'v' if supplied (e.g. v1.0.0 -> 1.0.0)
 VERSION="${VERSION#v}"
 
-echo "==> Fetching Skred WASM assets for v${VERSION} from github.com/octetta/pulp..."
+echo "==> Fetching Skred WASM assets for v${VERSION} from github.com/octetta/sk3..."
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 ARCHIVE_NAME="skred-${VERSION}-maxed-wasm.zip"
-DOWNLOAD_URL="https://github.com/octetta/pulp/releases/download/v${VERSION}/${ARCHIVE_NAME}"
+DOWNLOAD_URL="https://github.com/octetta/sk3/releases/download/v${VERSION}/${ARCHIVE_NAME}"
 
 echo "Downloading ${DOWNLOAD_URL}..."
 if curl -fSL --progress-bar "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"; then
@@ -51,6 +51,6 @@ if curl -fSL --progress-bar "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"; t
   ls -lh "${TARGET_DIR}"
 else
   echo "Error: Failed to download ${DOWNLOAD_URL}" >&2
-  echo "Check if release v${VERSION} and asset ${ARCHIVE_NAME} exist at https://github.com/octetta/pulp/releases" >&2
+  echo "Check if release v${VERSION} and asset ${ARCHIVE_NAME} exist at https://github.com/octetta/sk3/releases" >&2
   exit 1
 fi

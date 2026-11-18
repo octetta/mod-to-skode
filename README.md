@@ -5,7 +5,7 @@
 [![Lustre](https://img.shields.io/badge/frontend-Lustre-ff69b4.svg)](https://hexdocs.pm/lustre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, interactive web studio, and playback engine for the **Skred 0.85.1** synthesizer and **Skode** live-coding sequencer.
+High-fidelity Amiga / ProTracker / FastTracker (`.mod`) module converter, interactive web studio, and playback engine for the **Skred 1.0.0** synthesizer and **Skode** live-coding sequencer.
 
 > **Dogfooding the Skode Ecosystem**: `mod-to-skode` relies directly on the official **[`skode`](https://github.com/octetta/skode)** package (v1.0.0) for typed AST modeling, canonical script serialization, and direct WebAssembly engine dispatch (`skode/transport/wasm`), proving its real-world reliability on large-scale, multi-thousand-row music tracker data.
 
@@ -13,7 +13,7 @@ Available both as a **100% client-side web application** with in-browser WebAsse
 
 🌐 **Interactive Web Studio:** [octetta.github.io/mod-to-skode](https://octetta.github.io/mod-to-skode/)  
 📖 **Gleam & Lustre Code Tour:** [CODE_TOUR.md](CODE_TOUR.md)  
-📦 **Skred Audio Engine:** [github.com/octetta/pulp](https://github.com/octetta/pulp)  
+📦 **Skred Audio Engine:** [github.com/octetta/sk3](https://github.com/octetta/sk3)  
 👤 **Author:** Joseph Stewart ([josephestewart.com](https://josephestewart.com)) · [YouTube: @octetta](https://youtube.com/@octetta)
 
 ---
@@ -61,7 +61,7 @@ Available both as a **100% client-side web application** with in-browser WebAsse
 
 `mod-to-skode` was built out of deep love and reverence for the Commodore Amiga demoscene, tracker music, and the expressive beauty of modern functional programming in [Gleam](https://gleam.run/).
 
-There is something genuinely magical about taking an iconic 35-year-old `.mod` file—conceived on a Motorola 68000 with 512 KB of Chip RAM—dropping it into a modern browser window, and hearing pure Gleam code parse its raw bytes in milliseconds, reconstruct every pitch glide, vibrato tick, and loop point, and synthesize it through [Skred's](https://github.com/octetta/pulp) WebAssembly audio engine.
+There is something genuinely magical about taking an iconic 35-year-old `.mod` file—conceived on a Motorola 68000 with 512 KB of Chip RAM—dropping it into a modern browser window, and hearing pure Gleam code parse its raw bytes in milliseconds, reconstruct every pitch glide, vibrato tick, and loop point, and synthesize it through [Skred's](https://github.com/octetta/sk3) WebAssembly audio engine.
 
 We are proud and excited to share what `mod-to-skode` can do:
 - **100% Client-Side Web Audio**: Zero backend servers, zero file uploads. Everything runs locally in your browser via Gleam compiled to JavaScript, WebAssembly, and the Web Audio API.
@@ -344,7 +344,7 @@ Developers can embed the Skred WebAssembly audio engine into any webpage, web ga
 ### 1. Copy Runtime Files
 Copy the following files into your web project:
 - `vendor/skred/skred_api.js` (vendored Emscripten glue runtime)
-- `vendor/skred/skred_api.wasm` (Skred v0.85.1 multi-threaded synthesizer core)
+- `vendor/skred/skred_api.wasm` (Skred v1.0.0 multi-threaded synthesizer core)
 - `coi-serviceworker.js` (provides Cross-Origin Isolation for `SharedArrayBuffer` on static hosts)
 
 ### 2. Include in HTML
@@ -456,7 +456,7 @@ mod-to-skode Makefile targets:
   make check        Verify compilation and Gleam formatting
   make format       Format all Gleam source and test files
   make deps         Install Gleam and npm dependencies
-  make update-skred Pull Skred WASM from github.com/octetta/pulp (latest or VERSION=x.y.z)
+  make update-skred Pull Skred WASM from github.com/octetta/sk3 (latest or VERSION=x.y.z)
   make all          Convert all demo modules in mods/ to out/*.zip via bin/mod2skode
   make <file>.zip   Convert a single module in mods/ to .zip via bin/mod2skode
   make install      Deploy ELYSIUM.zip to ../skred-web/amiga.zip
@@ -475,7 +475,7 @@ make update-skred
 
 To pin to an explicit release version:
 ```bash
-make update-skred VERSION=0.85.1
+make update-skred VERSION=1.0.0
 ```
 
 ### Continuous Deployment
@@ -499,7 +499,7 @@ The project relies on pinned, deterministic dependencies across the Gleam, JavaS
 | **[Gleam](https://gleam.run/)** | `^1.19.2` | Primary language; compiles to ES module JavaScript |
 | **[Node.js](https://nodejs.org/)** | `^20.0.0` (tested `v26.12.0`) | Development server, package runner, and test environment |
 | **[GCC](https://gcc.gnu.org/) / Clang** | Standard C99 / GNU99 | Compiles QuickJS and links the standalone native CLI binary |
-| **[Skred Audio Engine](https://github.com/octetta/pulp)** | `v0.85.1` (via `SKRED_VERSION`) | Real-time multi-threaded WebAssembly audio synthesizer |
+| **[Skred Audio Engine](https://github.com/octetta/sk3)** | `v1.0.0` (via `SKRED_VERSION`) | Real-time multi-threaded WebAssembly audio synthesizer |
 
 ### Gleam Packages (`gleam.toml` & `manifest.toml`)
 
@@ -525,7 +525,7 @@ The project relies on pinned, deterministic dependencies across the Gleam, JavaS
 | :--- | :--- | :--- |
 | **[QuickJS](https://bellard.org/quickjs/)** | Fabrice Bellard & Charlie Gordon | Embeddable C JS engine (`libquickjs.a` + `qjsc`) for standalone native binaries |
 | **[fflate](https://github.com/101arrowz/fflate)** | `v0.8.2` (Arjun Barrett) | Pure JavaScript synchronous and asynchronous Deflate/ZIP compression |
-| **Skred WASM Runtime** | `v0.85.1` (`octetta/pulp`) | `skred_api.js` and `skred_api.wasm` Emscripten WebAssembly runtime files |
+| **Skred WASM Runtime** | `v1.0.0` (`octetta/pulp`) | `skred_api.js` and `skred_api.wasm` Emscripten WebAssembly runtime files |
 
 ---
 
@@ -533,7 +533,7 @@ The project relies on pinned, deterministic dependencies across the Gleam, JavaS
 
 This project stands on the shoulders of brilliant software pioneers, musicians, and open-source contributors:
 
-- **Joseph Stewart ([Octetta](https://github.com/octetta))**: Project creator, converter architecture, Skode sequencer design, and author of the [Skred audio engine](https://github.com/octetta/pulp). Find more work and music at [josephestewart.com](https://josephestewart.com) and on YouTube at [@octetta](https://youtube.com/@octetta).
+- **Joseph Stewart ([Octetta](https://github.com/octetta))**: Project creator, converter architecture, Skode sequencer design, and author of the [Skred audio engine](https://github.com/octetta/sk3). Find more work and music at [josephestewart.com](https://josephestewart.com) and on YouTube at [@octetta](https://youtube.com/@octetta).
 - **[Louis Pilfold](https://github.com/lpil) & the Gleam Community**: Creators of [Gleam](https://gleam.run/)—a delightfully friendly, type-safe language that brings absolute joy to functional programming.
 - **[Hayleigh Thompson](https://github.com/hayleigh-dot-dev) & the Lustre Contributors**: Creators of [Lustre](https://hexdocs.pm/lustre/), bringing The Elm Architecture to the Gleam web ecosystem with elegance and clarity.
 - **[Fabrice Bellard](https://bellard.org/) & Charlie Gordon**: Creators of **QuickJS**, the remarkably compact, standards-compliant C JavaScript engine that powers the standalone native `mod2skode` CLI.

@@ -41,7 +41,7 @@ help:
 	@echo "  make check        Verify compilation and Gleam formatting"
 	@echo "  make format       Format all Gleam source and test files"
 	@echo "  make deps         Install Gleam and npm dependencies"
-	@echo "  make update-skred Pull Skred WASM from github.com/octetta/pulp (latest or VERSION=x.y.z)"
+	@echo "  make update-skred Pull Skred WASM from github.com/octetta/sk3 (latest or VERSION=x.y.z)"
 	@echo "  make all          Convert all demo modules in mods/ to out/*.zip via bin/mod2skode"
 	@echo "  make <file>.zip   Convert a single module in mods/ to .zip via bin/mod2skode"
 	@echo "  make install      Deploy ELYSIUM.zip to ../skred-web/amiga.zip"
@@ -60,7 +60,7 @@ node_modules: package.json package-lock.json
 	@touch -c node_modules
 
 update-skred:
-	@echo "==> Fetching Skred WASM from github.com/octetta/pulp releases..."
+	@echo "==> Fetching Skred WASM from github.com/octetta/sk3 releases..."
 	./scripts/fetch-skred.sh $(VERSION)
 
 # ------------------------------------------------------------------------------
