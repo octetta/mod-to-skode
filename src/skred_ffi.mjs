@@ -72,8 +72,8 @@ export async function initWorkletEngine() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       workletAudioContext = new AudioCtx({ latencyHint: "interactive" });
 
-      const processorUrl = new URL("vendor/skred/skred_worklet_processor.js?v=1.3.8", getAppBaseUrl()).href;
-      const wasmUrl = new URL("vendor/skred/skred_worklet_engine.wasm?v=1.3.8", getAppBaseUrl()).href;
+      const processorUrl = new URL("vendor/skred/skred_worklet_processor.js?v=1.3.9", getAppBaseUrl()).href;
+      const wasmUrl = new URL("vendor/skred/skred_worklet_engine.wasm?v=1.3.9", getAppBaseUrl()).href;
 
       console.log("[mod-to-skode] Loading AudioWorklet module:", processorUrl);
       await workletAudioContext.audioWorklet.addModule(processorUrl);
@@ -188,7 +188,7 @@ export function getEngineVersion() {
       } catch (e) {}
     }
   }
-  return "1.3.8";
+  return "1.3.9";
 }
 
 export function initEngine(callback) {
@@ -205,9 +205,9 @@ export function initEngine(callback) {
   win.Module = win.Module || {};
   win.Module.locateFile = function (path) {
     if (typeof window !== "undefined") {
-      return new URL("vendor/skred/" + path + "?v=1.3.8", getAppBaseUrl()).href;
+      return new URL("vendor/skred/" + path + "?v=1.3.9", getAppBaseUrl()).href;
     }
-    return "/vendor/skred/" + path + "?v=1.3.8";
+    return "/vendor/skred/" + path + "?v=1.3.9";
   };
 
   createReplDom();
