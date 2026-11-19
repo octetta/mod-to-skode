@@ -645,17 +645,6 @@ pub fn convert_with_options(
         })
 
       let s_last = total_steps - 1
-      let master_cond = [
-        "# === THE MASTER CONDUCTOR ===\n",
-        "# y127 is an empty pattern set as the 'Master' (yp127).\n",
-        "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
-        "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
-        "y127 %"
-          <> int.to_string(initial_speed)
-          <> " [v0] x"
-          <> int.to_string(s_last)
-          <> " yp127\n\n",
-      ]
 
       // Initial channel states
       let initial_channels =
@@ -822,6 +811,21 @@ pub fn convert_with_options(
           ],
         ])
 
+      let y127_steps = dict.get(full_pattern_texts, 127) |> result.unwrap("")
+      let master_cond = [
+        "# === THE MASTER CONDUCTOR ===\n",
+        "# y127 is an empty pattern set as the 'Master' (yp127).\n",
+        "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
+        "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
+        "y127 %"
+          <> int.to_string(initial_speed)
+          <> "\n"
+          <> y127_steps
+          <> "[v0] x"
+          <> int.to_string(s_last)
+          <> " yp127\n\n",
+      ]
+
       let all_skode_parts =
         list.flatten([
           init_sb,
@@ -903,10 +907,22 @@ fn generate_all_rows(
       let updated_step_times = dict.insert(step_times, global_idx, duration_acc)
 
       // Scan row for speed/tempo changes
-      let #(row_speed, row_tempo) =
+      let #(scanned_speed, scanned_tempo) =
         scan_speed_tempo(notes, None, None, global_idx)
-      let new_speed = option.unwrap(row_speed, cur_speed)
-      let new_tempo = option.unwrap(row_tempo, cur_tempo)
+      let new_speed = option.unwrap(scanned_speed, cur_speed)
+      let new_tempo = option.unwrap(scanned_tempo, cur_tempo)
+
+      let speed_changed = new_speed != cur_speed
+      let tempo_changed = new_tempo != cur_tempo
+
+      let row_speed = case speed_changed {
+        True -> Some(new_speed)
+        False -> None
+      }
+      let row_tempo = case tempo_changed {
+        True -> Some(new_tempo)
+        False -> None
+      }
 
       let row_duration =
         int.to_float(new_speed) *. 2.5 /. int.to_float(new_tempo)
@@ -1014,6 +1030,20 @@ fn generate_all_rows(
         }
       }
 
+      let final_pat_texts_with_127 = case row_speed {
+        Some(s) -> {
+          let line127 =
+            "[z%"
+            <> int.to_string(s)
+            <> "] x"
+            <> int.to_string(global_idx)
+            <> "\n"
+          let existing127 = dict.get(final_pat_texts, 127) |> result.unwrap("")
+          dict.insert(final_pat_texts, 127, existing127 <> line127)
+        }
+        None -> final_pat_texts
+      }
+
       generate_all_rows(
         rest_rows,
         global_idx + 1,
@@ -1022,7 +1052,7 @@ fn generate_all_rows(
         new_tempo,
         updated_chans,
         inst_map,
-        final_pat_texts,
+        final_pat_texts_with_127,
         duration_acc +. row_duration,
         updated_step_times,
       )
@@ -1251,7 +1281,7 @@ fn process_single_channel(
   cur_speed: Int,
   cur_tempo: Int,
   row_speed: Option(Int),
-  row_tempo: Option(Int),
+  _row_tempo: Option(Int),
   is_delay: Bool,
   note: Note,
   ch: ChannelState,
@@ -1265,14 +1295,10 @@ fn process_single_channel(
     False -> cmds
   }
 
-  // Speed and tempo changes
+  // Speed changes are synced across voice patterns (tempo is handled by conductor track)
   let cmds = case row_speed, is_delay {
     Some(s), False -> ["z%" <> int.to_string(s), ..cmds]
     _, _ -> cmds
-  }
-  let cmds = case row_tempo, c == 0, is_delay {
-    Some(t), True, False -> ["M" <> int.to_string(t) <> ",96", ..cmds]
-    _, _, _ -> cmds
   }
 
   let old_vol = ch.vol
