@@ -1,6 +1,6 @@
 {
   "name": "mod-to-skode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Amiga MOD tracker converter and real-time playback engine in Gleam and Lustre",
   "type": "module",
   "license": "MIT",
