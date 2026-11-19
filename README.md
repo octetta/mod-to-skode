@@ -1,7 +1,7 @@
 # mod-to-skode
 
-[![Version](https://img.shields.io/badge/version-v1.0.2-blue.svg)](gleam.toml)
-[![Skred Engine](https://img.shields.io/badge/skred-v1.3.9-orange.svg)](https://github.com/octetta/sk3)
+[![Version](https://img.shields.io/badge/version-v1.0.4-blue.svg)](gleam.toml)
+[![Skred Engine](https://img.shields.io/badge/skred-v1.3.13-orange.svg)](https://github.com/octetta/sk3)
 [![Gleam](https://img.shields.io/badge/language-Gleam-ffaff3.svg)](https://gleam.run/)
 [![Lustre](https://img.shields.io/badge/frontend-Lustre-ff69b4.svg)](https://hexdocs.pm/lustre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
