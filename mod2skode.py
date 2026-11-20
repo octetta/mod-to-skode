@@ -850,12 +850,14 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
         # Macros
         out.write("# === MACROS ===\n")
-        out.write("# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n")
+        out.write("# The file does not start automatically. Type 'play' to begin, 'pause'/'resume' to pause/continue, and 'stop' to halt.\n")
         pat_list = [str(pat_mapping[(c, 0)]) for c in range(nch + 1)] + ["127"]
         play_cmds = f"?ce! /cer 1 Z0 Z! ({' '.join(pat_list)}) Z>"
         efx_cmds = "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
         nofx_cmds = "v0 p-.6 v1 p.6 v2 p.6 v3 p-.6"
         out.write(f"[play]: {play_cmds};\n")
+        out.write("[pause]: Z2 O;\n")
+        out.write("[resume]: Z3;\n")
         out.write(f"[stop]: {stop_cmds};\n")
         out.write(f"[efx!]: {efx_cmds};\n\n")
         out.write(f"[nofx]: {nofx_cmds};\n\n")
