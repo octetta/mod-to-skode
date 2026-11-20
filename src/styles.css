@@ -777,7 +777,7 @@ html, body {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   text-align: left;
 }
 
@@ -785,25 +785,56 @@ html, body {
   background-color: var(--bg-subtle);
   color: var(--text-muted);
   font-weight: 600;
-  padding: 10px 14px;
+  padding: 5px 8px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 1;
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
 }
 
 .tracker-table td {
-  padding: 8px 14px;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--border);
   color: var(--text-main);
+  vertical-align: middle;
 }
 
-.tracker-table tr.row-empty {
+.tracker-table tr.row-empty td {
+  padding: 2px 8px;
+  font-size: 0.72rem;
   opacity: 0.35;
 }
 
 .tracker-table tr.row-active:hover {
   background-color: var(--bg-card-hover);
+}
+
+.th-id, .td-id {
+  width: 44px;
+  text-align: center;
+}
+
+.th-audition, .td-audition {
+  width: 74px;
+  text-align: center;
+}
+
+.th-size, .td-size {
+  width: 76px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.th-length, .td-length {
+  width: 130px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.th-loop, .td-loop {
+  width: 120px;
 }
 
 .td-id {
@@ -813,6 +844,70 @@ html, body {
 
 .td-name {
   color: var(--accent-green);
+  font-weight: 500;
+}
+
+.td-path {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.samples-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.samples-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.samples-badge-count {
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.samples-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.samples-summary-sep {
+  color: var(--border);
+}
+
+.badge-loop {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  border-radius: 3px;
+  background-color: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.badge-oneshot {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  border-radius: 3px;
+  background-color: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .skode-view {

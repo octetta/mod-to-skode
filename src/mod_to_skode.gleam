@@ -4,6 +4,7 @@
 //// to Skode scripts, packages them with WAV samples into a ZIP archive,
 //// and allows instant playback directly in the Skred WASM audio engine.
 
+import gleam/bit_array
 import gleam/dict
 import gleam/float
 import gleam/int
@@ -1444,7 +1445,7 @@ fn view_tab_content(model: Model, mod_file: ModFile) -> Element(Msg) {
   case model.active_tab {
     "info" -> view_instruments_table(mod_file.instruments, model.is_playing)
     "skode" -> view_skode_code(model.conversion)
-    "samples" -> view_samples_list(model.conversion)
+    "samples" -> view_samples_list(model.conversion, mod_file, model.is_playing)
     "embed" -> view_embed_guide(model, mod_file)
     _ -> view_instruments_table(mod_file.instruments, model.is_playing)
   }
@@ -1655,32 +1656,171 @@ fn get_preview_lines(content: String, max_lines: Int) -> String {
   }
 }
 
+fn format_file_size(bytes: Int) -> String {
+  case bytes < 1024 {
+    True -> int.to_string(bytes) <> " B"
+    False -> {
+      let kb = int.to_float(bytes) /. 1024.0
+      converter.format_float(kb, 1) <> " KB"
+    }
+  }
+}
+
 fn view_samples_list(
   conv_opt: option.Option(ConversionResult),
+  mod_file: ModFile,
+  is_playing: Bool,
 ) -> Element(Msg) {
   case conv_opt {
     Some(conv) -> {
-      html.div([class("samples-grid")], [
-        html.table([class("tracker-table")], [
-          html.thead([], [
-            html.tr([], [
-              html.th([], [text("Target File Path")]),
-              html.th([], [text("Sample Rate")]),
-              html.th([], [text("Bit Depth")]),
-              html.th([], [text("Channels")]),
+      let total_bytes =
+        list.fold(conv.samples, 0, fn(acc, item) {
+          acc + bit_array.byte_size(item.1)
+        })
+
+      let inst_map =
+        list.map(mod_file.instruments, fn(ins) { #(ins.id, ins) })
+        |> dict.from_list
+
+      html.div([class("samples-container")], [
+        html.div([class("samples-header-bar")], [
+          html.div([class("samples-summary-left")], [
+            html.span([class("samples-badge-count")], [
+              text(
+                int.to_string(list.length(conv.samples))
+                <> " WAV Audio Samples",
+              ),
             ]),
           ]),
-          html.tbody(
-            [],
-            list.map(conv.samples, fn(item) {
+          html.div([class("samples-summary-right")], [
+            html.span([class("samples-summary-stat")], [
+              text("Total: " <> format_file_size(total_bytes)),
+            ]),
+            html.span([class("samples-summary-sep")], [text("·")]),
+            html.span([class("samples-summary-stat")], [
+              text("16,574 Hz Mono 16-bit PCM"),
+            ]),
+          ]),
+        ]),
+        html.div([class("table-container")], [
+          html.table([class("tracker-table tracker-table-compact")], [
+            html.thead([], [
               html.tr([], [
-                html.td([class("td-name")], [text(item.0)]),
-                html.td([], [text("16,574 Hz")]),
-                html.td([], [text("16-bit PCM")]),
-                html.td([], [text("Mono (1 ch)")]),
-              ])
-            }),
-          ),
+                html.th([class("th-id")], [text("#")]),
+                html.th([class("th-audition")], [text("Audition")]),
+                html.th([class("th-name")], [text("Sample Name")]),
+                html.th([class("th-path")], [text("VFS File Path")]),
+                html.th([class("th-size")], [text("Size")]),
+                html.th([class("th-length")], [text("Length")]),
+                html.th([class("th-loop")], [text("Loop Mode")]),
+              ]),
+            ]),
+            html.tbody(
+              [],
+              list.map(conv.samples, fn(item) {
+                let path = item.0
+                let raw = item.1
+                let size = bit_array.byte_size(raw)
+
+                let id_opt = case string.split(path, "inst_") {
+                  [_, rest] ->
+                    case string.split(rest, ".wav") {
+                      [num_str, _] ->
+                        int.parse(num_str) |> option.from_result
+                      _ -> option.None
+                    }
+                  _ -> option.None
+                }
+
+                let id_str = case id_opt {
+                  Some(id) ->
+                    case id < 10 {
+                      True -> "0" <> int.to_string(id)
+                      False -> int.to_string(id)
+                    }
+                  None -> "--"
+                }
+
+                let ins_opt = case id_opt {
+                  Some(id) -> dict.get(inst_map, id) |> option.from_result
+                  None -> option.None
+                }
+
+                let audition_elem = case id_opt {
+                  Some(id) ->
+                    html.button(
+                      [
+                        class("btn btn-secondary btn-sm audition-btn"),
+                        event.on_click(PreviewSampleClicked(id)),
+                        attribute.disabled(is_playing),
+                        attribute.title(case is_playing {
+                          True -> "Preview disabled while playing"
+                          False -> "Audition sample #" <> int.to_string(id)
+                        }),
+                      ],
+                      [text("🔊 Play")],
+                    )
+                  None -> html.span([class("audition-empty")], [text("-")])
+                }
+
+                let name_str = case ins_opt {
+                  Some(ins) ->
+                    case string.trim(ins.name) {
+                      "" -> "(unnamed)"
+                      name -> name
+                    }
+                  None -> "-"
+                }
+
+                let length_str = case ins_opt {
+                  Some(ins) -> {
+                    let sec = int.to_float(ins.len) /. 16574.0
+                    int.to_string(ins.len)
+                    <> " spl ("
+                    <> converter.format_float(sec, 2)
+                    <> "s)"
+                  }
+                  None -> {
+                    let spl = int.max(0, size - 44) / 2
+                    let sec = int.to_float(spl) /. 16574.0
+                    int.to_string(spl)
+                    <> " spl ("
+                    <> converter.format_float(sec, 2)
+                    <> "s)"
+                  }
+                }
+
+                let loop_badge = case ins_opt {
+                  Some(ins) ->
+                    case ins.wants_loop {
+                      True ->
+                        html.span([class("badge-loop")], [
+                          text(
+                            "Loop "
+                            <> int.to_string(ins.loop_start)
+                            <> ".."
+                            <> int.to_string(ins.loop_start + ins.loop_len),
+                          ),
+                        ])
+                      False ->
+                        html.span([class("badge-oneshot")], [text("1-Shot")])
+                    }
+                  None ->
+                    html.span([class("badge-oneshot")], [text("1-Shot")])
+                }
+
+                html.tr([class("row-active")], [
+                  html.td([class("td-id")], [text(id_str)]),
+                  html.td([class("td-audition")], [audition_elem]),
+                  html.td([class("td-name")], [text(name_str)]),
+                  html.td([class("td-path")], [text(path)]),
+                  html.td([class("td-size")], [text(format_file_size(size))]),
+                  html.td([class("td-length")], [text(length_str)]),
+                  html.td([class("td-loop")], [loop_badge]),
+                ])
+              }),
+            ),
+          ]),
         ]),
       ])
     }

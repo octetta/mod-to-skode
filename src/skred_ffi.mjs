@@ -73,8 +73,8 @@ export async function initWorkletEngine() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       workletAudioContext = new AudioCtx({ latencyHint: "interactive" });
 
-      const processorUrl = new URL("vendor/skred/skred_worklet_processor.js?v=1.3.16", getAppBaseUrl()).href;
-      const wasmUrl = new URL("vendor/skred/skred_worklet_engine.wasm?v=1.3.16", getAppBaseUrl()).href;
+      const processorUrl = new URL("vendor/skred/skred_worklet_processor.js?v=1.3.16.2", getAppBaseUrl()).href;
+      const wasmUrl = new URL("vendor/skred/skred_worklet_engine.wasm?v=1.3.16.2", getAppBaseUrl()).href;
 
       console.log("[mod-to-skode] Loading AudioWorklet module:", processorUrl);
       await workletAudioContext.audioWorklet.addModule(processorUrl);
@@ -209,9 +209,9 @@ export function initEngine(callback) {
   win.Module = win.Module || {};
   win.Module.locateFile = function (path) {
     if (typeof window !== "undefined") {
-      return new URL("vendor/skred/" + path + "?v=1.3.16", getAppBaseUrl()).href;
+      return new URL("vendor/skred/" + path + "?v=1.3.16.2", getAppBaseUrl()).href;
     }
-    return "/vendor/skred/" + path + "?v=1.3.16";
+    return "/vendor/skred/" + path + "?v=1.3.16.2";
   };
 
   createReplDom();
@@ -671,8 +671,8 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
   removeAudioUnlockListeners();
   audioUnlocked = true;
 
-  // 1. Immediately silence previous playback smoothly
-  executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+  // 1. Immediately silence previous playback smoothly: mute master volume first to prevent click/pop
+  executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
 
   createZipArchive(mainSkText, samplesList, (_blob, zipData) => {
     if (!zipData) {
@@ -684,9 +684,15 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
     try {
       ensureAudioContext();
 
+      const chans = [];
+      for (let c = 0; c < activeSongNumChannels; c++) chans.push(c);
+      chans.push(127);
+      const playMacro = `[play]: ?ce! /cer 1 Z0 Z! (${chans.join(" ")}) Z>;`;
+
       if (useWorklet && workletNode) {
         console.log("[mod-to-skode] Sending song.zip to AudioWorklet (%z)...");
-        const followUpCmd = "[/song.zip] %z; y0 yc1; V" + currentMasterVolume + "; play;";
+        sendWorkletCommand(playMacro);
+        const followUpCmd = "[/song.zip] %z; y0 yc1; play; V" + currentMasterVolume + ";";
         workletNode.port.postMessage({
           type: "file",
           path: "/song.zip",
@@ -711,7 +717,8 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
       try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
       // Clean engine state right before mounting new zip
-      executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+      executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+      executeSkredCommand(playMacro);
 
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
       console.log("[mod-to-skode] Mounting song.zip (%z)...");
@@ -720,8 +727,8 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
         rZip = executeSkredCommand("%z [song.zip];");
       }
       const rYc = executeSkredCommand("y0 yc1;");
-      const rVol = executeSkredCommand(`V${currentMasterVolume}`);
       const rPlay = executeSkredCommand("play");
+      const rVol = executeSkredCommand(`V${currentMasterVolume}`);
       if (initialStep > 0) {
         seekToStep(initialStep, numChannels);
       }
@@ -750,14 +757,19 @@ export function seekToStep(step, numChannels) {
 export function pausePlayback() {
   if (!isPlaybackActive) return;
   isPlaybackPaused = true;
-  executeSkredCommand("Z0");
+  // Stop pattern advancement and turn off all active voice gates immediately
+  executeSkredCommand("Z0 O");
 }
 
 export function resumePlayback() {
   if (!isPlaybackActive) return;
   isPlaybackPaused = false;
   ensureAudioContext();
-  executeSkredCommand("Z>");
+  const chans = [];
+  for (let c = 0; c < activeSongNumChannels; c++) chans.push(c);
+  chans.push(127);
+  // Resume active patterns without rewinding to step 0
+  executeSkredCommand(`(${chans.join(" ")}) Z>`);
 }
 
 export function stopPlayback() {
@@ -765,7 +777,7 @@ export function stopPlayback() {
   isPlaybackPaused = false;
   lastReportedStep = -1;
   ensureAudioContext();
-  executeSkredCommand("/cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+  executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu; V" + currentMasterVolume + ";");
 }
 
 export function previewSample(rawBitArray) {
