@@ -218,7 +218,10 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
       const count = this.module._skred_control_event_poll(this.eventsBuffer, MAX_EVENTS_BATCH);
       if (count > 0) {
         const events = [];
-        const view = new DataView(this.module.HEAPU8.buffer, this.eventsBuffer, count * EVENT_SIZE);
+        if (!this.eventsDataView || this.eventsDataView.buffer !== this.module.HEAPU8.buffer) {
+          this.eventsDataView = new DataView(this.module.HEAPU8.buffer, this.eventsBuffer, MAX_EVENTS_BATCH * EVENT_SIZE);
+        }
+        const view = this.eventsDataView;
         for (let i = 0; i < count; i++) {
           const base = i * EVENT_SIZE;
           const t = view.getUint32(base + 0, true);

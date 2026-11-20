@@ -32,6 +32,7 @@ let workletAudioContext = null;
 let workletReady = false;
 let useWorklet = false;
 let workletInitAttempted = false;
+let workletFailed = false;
 let workletInitPromise = null;
 let loadedZipData = null;
 let loadedInitialStep = 0;
@@ -116,6 +117,7 @@ export async function initWorkletEngine() {
           console.error("[mod-to-skode] AudioWorklet processor error:", data.error);
           useWorklet = false;
           workletReady = false;
+          workletFailed = true;
           ensureEngineRunning();
           if (isPlaybackActive && loadedZipData) {
             const M = getWasmModule();
@@ -134,6 +136,8 @@ export async function initWorkletEngine() {
     } catch (err) {
       console.warn("[mod-to-skode] AudioWorklet init failed, falling back to ScriptProcessor/miniaudio:", err);
       useWorklet = false;
+      workletReady = false;
+      workletFailed = true;
       return false;
     }
   })();
@@ -283,6 +287,10 @@ export function ensureEngineRunning() {
   if (useWorklet && workletNode) {
     return true;
   }
+  if (workletInitPromise && !workletReady && !workletFailed) {
+    // AudioWorklet is currently initializing asynchronously; do not launch main-thread fallback yet
+    return false;
+  }
   const M = getWasmModule();
   if (!M) return false;
   if (typeof M._skred_audio_running === "function" && M._skred_audio_running()) {
@@ -352,6 +360,23 @@ if (typeof win.addEventListener === "function") {
   win.addEventListener("click", unlockAudio, { passive: true });
 }
 
+let pendingUiStep = -1;
+let rafScheduled = false;
+
+function scheduleUiStepUpdate(step) {
+  pendingUiStep = step;
+  if (!rafScheduled) {
+    rafScheduled = true;
+    const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+    schedule(() => {
+      rafScheduled = false;
+      if (playbackStepCallback && pendingUiStep >= 0 && isPlaybackActive) {
+        playbackStepCallback(pendingUiStep, activeSongTotalSteps);
+      }
+    });
+  }
+}
+
 function processBatchEvents(events) {
   if (!events || events.length === 0) return;
   for (let i = 0; i < events.length; i++) {
@@ -373,9 +398,7 @@ function processBatchEvents(events) {
           return;
         }
         lastReportedStep = s;
-        if (playbackStepCallback) {
-          playbackStepCallback(s, activeSongTotalSteps);
-        }
+        scheduleUiStepUpdate(s);
       }
     }
 
