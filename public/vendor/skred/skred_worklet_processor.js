@@ -76,12 +76,12 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
   }
 
   getVersion() {
-    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.7";
+    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.15";
     try {
       const ptr = this.module._skred_version();
-      return ptr ? this.module.UTF8ToString(ptr) : "1.3.7";
+      return ptr ? this.module.UTF8ToString(ptr) : "1.3.15";
     } catch (e) {
-      return "1.3.7";
+      return "1.3.15";
     }
   }
 
@@ -105,6 +105,15 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
       } else {
         this.commandQueue.push(data);
       }
+    } else if (data.type === "features") {
+      const ptr = (this.module && typeof this.module._skred_features === "function") ? this.module._skred_features() : 0;
+      const text = ptr ? this.module.UTF8ToString(ptr) : "";
+      this.port.postMessage({ type: "features", text });
+    } else if (data.type === "graph") {
+      const ptr = (this.module && typeof this.module._skred_voice_graph === "function")
+        ? this.module._skred_voice_graph(data.voice || 0, 1, data.depth || 0) : 0;
+      const text = ptr ? this.module.UTF8ToString(ptr) : "";
+      this.port.postMessage({ type: "graph", text });
     } else if (data.type === "init" && !this.ready) {
       this.init(data.wasmBinary);
     }
