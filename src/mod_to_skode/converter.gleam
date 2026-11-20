@@ -742,6 +742,8 @@ pub fn convert_with_options(
         |> list.append(["127"])
         |> string.join(" ")
       let play_cmds = "?ce! /cer 1 Z0 Z! (" <> pat_list <> ") Z>"
+      let pause_cmds = "Z2 O"
+      let resume_cmds = "Z3"
       let efx_cmds =
         "v0 p0 r1 ds .5 v1 p0 r1 ds .5 v2 p0 r1 ds .5 v3 p0 r1 ds .5 DL 1 0 0 0 0 15 10"
       let nofx_cmds =
@@ -755,8 +757,10 @@ pub fn convert_with_options(
 
       let macro_defs = [
         "# === MACROS ===\n",
-        "# The file does not start automatically. Type 'play' to begin, and 'stop' to halt.\n",
+        "# The file does not start automatically. Type 'play' to begin, 'pause'/'resume' to pause/continue, and 'stop' to halt.\n",
         "[play]: " <> play_cmds <> ";\n",
+        "[pause]: " <> pause_cmds <> ";\n",
+        "[resume]: " <> resume_cmds <> ";\n",
         "[stop]: " <> stop_cmds <> ";\n",
         "[efx!]: " <> efx_cmds <> ";\n\n",
         "[nofx]: " <> nofx_cmds <> ";\n\n",

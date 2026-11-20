@@ -3,6 +3,91 @@
 // Completely isolated from UI rendering, GC pauses, and main-thread load
 // Zero SharedArrayBuffer requirement — 100% compatible with itch.io iframes
 
+// Polyfill TextDecoder and TextEncoder in AudioWorkletGlobalScope if not present
+if (typeof TextDecoder === "undefined") {
+  globalThis.TextDecoder = class TextDecoder {
+    constructor(encoding = "utf-8") { this.encoding = encoding; }
+    decode(uint8array) {
+      if (!uint8array || uint8array.length === 0) return "";
+      let s = "";
+      let i = 0;
+      while (i < uint8array.length) {
+        let b = uint8array[i++];
+        if (b < 128) {
+          s += String.fromCharCode(b);
+        } else if (b > 191 && b < 224) {
+          s += String.fromCharCode(((b & 31) << 6) | (uint8array[i++] & 63));
+        } else if (b > 223 && b < 240) {
+          s += String.fromCharCode(((b & 15) << 12) | ((uint8array[i++] & 63) << 6) | (uint8array[i++] & 63));
+        } else {
+          let cp = (((b & 7) << 18) | ((uint8array[i++] & 63) << 12) | ((uint8array[i++] & 63) << 6) | (uint8array[i++] & 63)) - 0x10000;
+          s += String.fromCharCode((cp >> 10) + 0xD800, (cp & 0x3FF) + 0xDC00);
+        }
+      }
+      return s;
+    }
+  };
+}
+
+if (typeof TextEncoder === "undefined") {
+  globalThis.TextEncoder = class TextEncoder {
+    encode(string) {
+      const utf8 = [];
+      for (let i = 0; i < string.length; i++) {
+        let charcode = string.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+        } else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        } else {
+          i++;
+          charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (string.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        }
+      }
+      return new Uint8Array(utf8);
+    }
+  };
+}
+
+if (typeof URL === "undefined") {
+  globalThis.URL = class URL {
+    constructor(url, base) {
+      if (!base) {
+        this.href = String(url);
+      } else {
+        const b = String(base).replace(/\/[^\/]*$/, '/');
+        this.href = b + String(url).replace(/^\/+/, '');
+      }
+    }
+    toString() { return this.href; }
+  };
+}
+
+if (typeof performance === "undefined") {
+  const perfEpoch = Date.now();
+  globalThis.performance = {
+    timeOrigin: perfEpoch,
+    now: () => {
+      if (typeof currentTime === "number" && currentTime > 0) {
+        return currentTime * 1000.0;
+      }
+      return Date.now() - perfEpoch;
+    }
+  };
+}
+
+if (typeof setTimeout === "undefined") {
+  globalThis.setTimeout = (cb, ms, ...args) => { cb(...args); return 0; };
+  globalThis.clearTimeout = () => {};
+}
+
+if (typeof setInterval === "undefined") {
+  globalThis.setInterval = () => 0;
+  globalThis.clearInterval = () => {};
+}
+
 import createModule from "./skred_worklet_engine.js";
 
 const MAX_EVENTS_BATCH = 64;
@@ -31,13 +116,11 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
 
   async init(wasmBinary) {
     try {
-      const moduleConfig = {};
+      const moduleConfig = {
+        locateFile: (path) => path
+      };
       if (wasmBinary) {
         moduleConfig.wasmBinary = wasmBinary;
-      } else {
-        moduleConfig.locateFile = (path) => {
-          return new URL(path, import.meta.url).href;
-        };
       }
       this.module = await createModule(moduleConfig);
       const startRes = this.module._skred_start_headless(128, Math.floor(this.sampleRate));
@@ -76,12 +159,12 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
   }
 
   getVersion() {
-    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.7";
+    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.17";
     try {
       const ptr = this.module._skred_version();
-      return ptr ? this.module.UTF8ToString(ptr) : "1.3.7";
+      return ptr ? this.module.UTF8ToString(ptr) : "1.3.17";
     } catch (e) {
-      return "1.3.7";
+      return "1.3.17";
     }
   }
 
@@ -105,6 +188,15 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
       } else {
         this.commandQueue.push(data);
       }
+    } else if (data.type === "features") {
+      const ptr = (this.module && typeof this.module._skred_features === "function") ? this.module._skred_features() : 0;
+      const text = ptr ? this.module.UTF8ToString(ptr) : "";
+      this.port.postMessage({ type: "features", text });
+    } else if (data.type === "graph") {
+      const ptr = (this.module && typeof this.module._skred_voice_graph === "function")
+        ? this.module._skred_voice_graph(data.voice || 0, 1, data.depth || 0) : 0;
+      const text = ptr ? this.module.UTF8ToString(ptr) : "";
+      this.port.postMessage({ type: "graph", text });
     } else if (data.type === "init" && !this.ready) {
       this.init(data.wasmBinary);
     }

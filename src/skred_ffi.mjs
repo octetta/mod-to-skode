@@ -107,6 +107,8 @@ export async function initWorkletEngine() {
           sendWorkletCommand("V" + currentMasterVolume);
           sendWorkletCommand("[stop]: /cer 0 Z0 O DQ ?ce!;");
           sendWorkletCommand("[play]: ?ce! /cer 1 Z0 Z! (0 1 2 3 4 127) Z>;");
+          sendWorkletCommand("[pause]: Z2 O;");
+          sendWorkletCommand("[resume]: Z3;");
         } else if (data.type === "events") {
           processBatchEvents(data.events);
         } else if (data.type === "log") {
@@ -757,19 +759,14 @@ export function seekToStep(step, numChannels) {
 export function pausePlayback() {
   if (!isPlaybackActive) return;
   isPlaybackPaused = true;
-  // Stop pattern advancement and turn off all active voice gates immediately
-  executeSkredCommand("Z0 O");
+  executeSkredCommand("pause;");
 }
 
 export function resumePlayback() {
   if (!isPlaybackActive) return;
   isPlaybackPaused = false;
   ensureAudioContext();
-  const chans = [];
-  for (let c = 0; c < activeSongNumChannels; c++) chans.push(c);
-  chans.push(127);
-  // Resume active patterns without rewinding to step 0
-  executeSkredCommand(`(${chans.join(" ")}) Z>`);
+  executeSkredCommand("resume;");
 }
 
 export function stopPlayback() {
