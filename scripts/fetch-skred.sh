@@ -43,8 +43,8 @@ if curl -fSL --progress-bar "${DOWNLOAD_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"; t
   echo "Extracting ${ARCHIVE_NAME}..."
   unzip -q -o "${TMP_DIR}/${ARCHIVE_NAME}" -d "${TMP_DIR}/extracted"
 
-  find "${TMP_DIR}/extracted" -type f -name "skred_api.*" -exec cp -f {} "${TARGET_DIR}/" \;
-  find "${TMP_DIR}/extracted" -type f -name "skred_api.*" -exec cp -f {} "${PUBLIC_DIR}/" \;
+  find "${TMP_DIR}/extracted" -type f \( -name "skred_api.*" -o -name "skred_worklet_*" \) -exec cp -f {} "${TARGET_DIR}/" \;
+  find "${TMP_DIR}/extracted" -type f \( -name "skred_api.*" -o -name "skred_worklet_*" \) -exec cp -f {} "${PUBLIC_DIR}/" \;
 
   echo "${VERSION}" > "${VERSION_FILE}"
   echo "==> Successfully installed Skred v${VERSION} into vendor/skred/ and public/vendor/skred/:"

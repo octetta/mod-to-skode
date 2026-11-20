@@ -106,7 +106,7 @@ export async function initWorkletEngine() {
           sendWorkletCommand("S-1");
           sendWorkletCommand("V" + currentMasterVolume);
           sendWorkletCommand("[stop]: /cer 0 Z0 O DQ ?ce!;");
-          sendWorkletCommand("[play]: ?ce! /cer 1 Z0 Z! (0 1 2 3 127) Z>;");
+          sendWorkletCommand("[play]: ?ce! /cer 1 Z0 Z! (0 1 2 3 4 127) Z>;");
         } else if (data.type === "events") {
           processBatchEvents(data.events);
         } else if (data.type === "log") {
@@ -686,7 +686,7 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
 
       if (useWorklet && workletNode) {
         console.log("[mod-to-skode] Sending song.zip to AudioWorklet (%z)...");
-        const followUpCmd = "[/song.zip] %z; y0 yc1; V" + currentMasterVolume + "; ?ce! /cer 1 Z0 Z! (0 1 2 3 127) Z>;";
+        const followUpCmd = "[/song.zip] %z; y0 yc1; V" + currentMasterVolume + "; play;";
         workletNode.port.postMessage({
           type: "file",
           path: "/song.zip",
