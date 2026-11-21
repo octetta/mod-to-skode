@@ -682,8 +682,6 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
   }
 
   ensureAudioContext();
-  removeAudioUnlockListeners();
-  audioUnlocked = true;
 
   // 1. Immediately silence previous playback smoothly: mute master volume first to prevent click/pop
   executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
