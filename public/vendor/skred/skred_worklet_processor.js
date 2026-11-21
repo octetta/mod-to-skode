@@ -88,6 +88,10 @@ if (typeof setInterval === "undefined") {
   globalThis.clearInterval = () => {};
 }
 
+if (typeof fetch === "undefined") {
+  globalThis.fetch = () => Promise.reject(new Error("fetch is not supported in AudioWorkletGlobalScope"));
+}
+
 import createModule from "./skred_worklet_engine.js";
 
 const MAX_EVENTS_BATCH = 64;
@@ -101,6 +105,7 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
     this.rightPtr = 0;
     this.eventsBuffer = 0;
     this.ready = false;
+    this.initializing = false;
     this.commandQueue = [];
     this.sampleRate = (options && options.processorOptions && options.processorOptions.sampleRate) || 48000;
     this.cmdBufferPtr = 0;
@@ -111,17 +116,33 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
     };
 
     const initialBinary = options && options.processorOptions && options.processorOptions.wasmBinary;
-    this.init(initialBinary);
+    if (initialBinary) {
+      this.init(initialBinary);
+    }
   }
 
   async init(wasmBinary) {
+    if (this.ready || this.initializing) return;
+    if (!wasmBinary) {
+      console.warn("[SkredWorklet] init called without wasmBinary, waiting for message port...");
+      return;
+    }
+    this.initializing = true;
     try {
       const moduleConfig = {
-        locateFile: (path) => path
+        locateFile: (path) => path,
+        instantiateWasm: (imports, successCallback) => {
+          WebAssembly.instantiate(wasmBinary, imports).then((output) => {
+            const instance = output.instance || output;
+            const module = output.module || null;
+            successCallback(instance, module);
+          }).catch((err) => {
+            console.error("[SkredWorklet] instantiateWasm error:", err);
+            this.port.postMessage({ type: "error", error: String(err) });
+          });
+          return {}; // Signals async instantiation to Emscripten
+        }
       };
-      if (wasmBinary) {
-        moduleConfig.wasmBinary = wasmBinary;
-      }
       this.module = await createModule(moduleConfig);
       const startRes = this.module._skred_start_headless(128, Math.floor(this.sampleRate));
       this.leftPtr = this.module._malloc(128 * 4);
@@ -131,6 +152,7 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
         this.eventsBuffer = this.module._malloc(MAX_EVENTS_BATCH * EVENT_SIZE);
       }
       this.ready = (startRes === 0);
+      this.initializing = false;
       if (typeof this.module._skred_logger === "function") {
         try { this.module._skred_logger(1); } catch (e) {}
       }
@@ -153,18 +175,19 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
         }
       }
     } catch (err) {
+      this.initializing = false;
       console.error("[SkredWorklet] Initialization error:", err);
       this.port.postMessage({ type: "error", error: String(err) });
     }
   }
 
   getVersion() {
-    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.16";
+    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.19";
     try {
       const ptr = this.module._skred_version();
-      return ptr ? this.module.UTF8ToString(ptr) : "1.3.16";
+      return ptr ? this.module.UTF8ToString(ptr) : "1.3.19";
     } catch (e) {
-      return "1.3.16";
+      return "1.3.19";
     }
   }
 
@@ -197,7 +220,8 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
         ? this.module._skred_voice_graph(data.voice || 0, 1, data.depth || 0) : 0;
       const text = ptr ? this.module.UTF8ToString(ptr) : "";
       this.port.postMessage({ type: "graph", text });
-    } else if (data.type === "init" && !this.ready) {
+    } else if (data.type === "init" && !this.ready && !this.initializing) {
+      if (data.sampleRate) this.sampleRate = data.sampleRate;
       this.init(data.wasmBinary);
     }
   }
