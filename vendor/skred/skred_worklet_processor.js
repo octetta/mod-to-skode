@@ -221,6 +221,7 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
       const text = ptr ? this.module.UTF8ToString(ptr) : "";
       this.port.postMessage({ type: "graph", text });
     } else if (data.type === "init" && !this.ready && !this.initializing) {
+      if (data.sampleRate) this.sampleRate = data.sampleRate;
       this.init(data.wasmBinary);
     }
   }

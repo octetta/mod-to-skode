@@ -98,6 +98,7 @@ export async function initWorkletEngine() {
       workletNode.port.postMessage({
         type: "init",
         wasmBinary: wasmBinary.slice ? wasmBinary.slice(0) : wasmBinary,
+        sampleRate: workletAudioContext.sampleRate,
       });
 
       workletNode.port.onmessage = (event) => {
@@ -266,14 +267,24 @@ export function initEngine(callback) {
 }
 
 function ensureAudioContext() {
-  if (workletAudioContext && workletAudioContext.state === "suspended") {
+  if (typeof navigator !== "undefined" && "audioSession" in navigator) {
+    try { navigator.audioSession.type = "playback"; } catch (e) {}
+  }
+  if (workletAudioContext && (workletAudioContext.state === "suspended" || workletAudioContext.state === "interrupted")) {
     workletAudioContext.resume().catch(() => {});
+    try {
+      const buf = workletAudioContext.createBuffer(1, 1, workletAudioContext.sampleRate);
+      const src = workletAudioContext.createBufferSource();
+      src.buffer = buf;
+      src.connect(workletAudioContext.destination);
+      src.start(0);
+    } catch (e) {}
   }
   const M = win.Module;
-  if (M && M.audioContext && M.audioContext.state === "suspended") {
+  if (M && M.audioContext && (M.audioContext.state === "suspended" || M.audioContext.state === "interrupted")) {
     M.audioContext.resume().catch(() => {});
   }
-  if (win.AL && win.AL.currentCtx && win.AL.currentCtx.audioCtx && win.AL.currentCtx.audioCtx.state === "suspended") {
+  if (win.AL && win.AL.currentCtx && win.AL.currentCtx.audioCtx && (win.AL.currentCtx.audioCtx.state === "suspended" || win.AL.currentCtx.audioCtx.state === "interrupted")) {
     win.AL.currentCtx.audioCtx.resume().catch(() => {});
   }
   if (win.miniaudio) {
@@ -282,7 +293,7 @@ function ensureAudioContext() {
     }
     if (Array.isArray(win.miniaudio.devices)) {
       for (const dev of win.miniaudio.devices) {
-        if (dev && dev.webaudio && dev.webaudio.state === "suspended") {
+        if (dev && dev.webaudio && (dev.webaudio.state === "suspended" || dev.webaudio.state === "interrupted")) {
           dev.webaudio.resume().catch(() => {});
         }
       }
@@ -342,30 +353,25 @@ export function ensureEngineRunning() {
   return false;
 }
 
-let audioUnlocked = false;
-
 function unlockAudio() {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
   ensureAudioContext();
   ensureEngineRunning();
-  removeAudioUnlockListeners();
-}
-
-function removeAudioUnlockListeners() {
-  if (typeof win.removeEventListener === "function") {
-    win.removeEventListener("pointerdown", unlockAudio);
-    win.removeEventListener("touchstart", unlockAudio);
-    win.removeEventListener("keydown", unlockAudio);
-    win.removeEventListener("click", unlockAudio);
-  }
 }
 
 if (typeof win.addEventListener === "function") {
   win.addEventListener("pointerdown", unlockAudio, { passive: true });
+  win.addEventListener("pointerup", unlockAudio, { passive: true });
   win.addEventListener("touchstart", unlockAudio, { passive: true });
+  win.addEventListener("touchend", unlockAudio, { passive: true });
   win.addEventListener("keydown", unlockAudio, { passive: true });
   win.addEventListener("click", unlockAudio, { passive: true });
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      ensureAudioContext();
+    }
+  });
 }
 
 let pendingUiStep = -1;
