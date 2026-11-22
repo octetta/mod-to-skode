@@ -41,6 +41,7 @@ let workletNode = null;
 let workletAudioContext = null;
 let workletReady = false;
 let useWorklet = false;
+let workletVersion = null;
 let workletInitAttempted = false;
 let workletFailed = false;
 let workletInitPromise = null;
@@ -119,6 +120,7 @@ export async function initWorkletEngine() {
           console.log(`[mod-to-skode] AudioWorklet Skred engine ready (v${data.version}, ${data.sampleRate}Hz)`);
           workletReady = true;
           useWorklet = true;
+          workletVersion = data.version && !data.version.startsWith("unknown") ? data.version : getSkredVersion();
           sendWorkletCommand("Z0");
           sendWorkletCommand("Y-1");
           sendWorkletCommand("S-1");
@@ -197,6 +199,9 @@ function getWasmModule() {
 }
 
 export function getEngineVersion() {
+  if (useWorklet && workletReady && workletVersion && !workletVersion.startsWith("unknown")) {
+    return workletVersion;
+  }
   const M = getWasmModule();
   if (M) {
     if (typeof M.ccall === "function") {
@@ -212,18 +217,31 @@ export function getEngineVersion() {
       } catch (e) {}
     }
   }
-  return "1.3.19";
+  if (workletVersion && !workletVersion.startsWith("unknown")) {
+    return workletVersion;
+  }
+  return getSkredVersion();
 }
 
 export function initEngine(callback) {
-  if (moduleReady) {
+  if (moduleReady || (useWorklet && workletReady)) {
     if (callback) callback(true, getEngineVersion());
     return;
   }
 
   // Pre-initialize worklet asynchronously in background
   if (!workletInitAttempted) {
-    initWorkletEngine().catch(() => {});
+    initWorkletEngine().then((success) => {
+      if (success) {
+        console.log("[mod-to-skode] AudioWorklet engine initialized successfully!");
+        if (callback && !moduleReady) {
+          moduleReady = true;
+          callback(true, getEngineVersion());
+        }
+      }
+    }).catch((err) => {
+      console.warn("[mod-to-skode] AudioWorklet init error, using fallback:", err);
+    });
   }
 
   win.Module = win.Module || {};

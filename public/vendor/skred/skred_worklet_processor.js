@@ -182,12 +182,12 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
   }
 
   getVersion() {
-    if (!this.module || typeof this.module._skred_version !== "function") return "1.3.19";
+    if (!this.module || typeof this.module._skred_version !== "function") return "unknown";
     try {
       const ptr = this.module._skred_version();
-      return ptr ? this.module.UTF8ToString(ptr) : "1.3.19";
+      return ptr && typeof this.module.UTF8ToString === "function" ? this.module.UTF8ToString(ptr) : "unknown";
     } catch (e) {
-      return "1.3.19";
+      return "unknown";
     }
   }
 
