@@ -538,6 +538,46 @@ pub fn build_live_stereo_command(nch: Int, mode: StereoMode) -> String {
   |> string.join(" ")
 }
 
+pub fn build_stream_gen(
+  stream_id: Int,
+  min: Float,
+  max: Float,
+  step: Float,
+  mode: Int,
+) -> String {
+  "/SG "
+  <> int.to_string(stream_id)
+  <> " "
+  <> format_float(min, 2)
+  <> " "
+  <> format_float(max, 2)
+  <> " "
+  <> format_float(step, 2)
+  <> " "
+  <> int.to_string(mode)
+}
+
+pub fn build_stream_seq(stream_id: Int, values: List(Float)) -> String {
+  "/SS "
+  <> int.to_string(stream_id)
+  <> " "
+  <> string.join(list.map(values, fn(v) { format_float(v, 2) }), " ")
+}
+
+pub fn build_step_range(program: String, start_step: Int, end_step: Int) -> String {
+  case start_step == end_step {
+    True -> "[" <> program <> "] x" <> int.to_string(start_step)
+    False ->
+      "["
+      <> program
+      <> "] "
+      <> int.to_string(start_step)
+      <> " "
+      <> int.to_string(end_step)
+      <> " X:"
+  }
+}
+
 /// Converts a parsed ModFile into Skode 0.85.1 script and WAV samples with default options.
 pub fn convert(mod: ModFile) -> Result(ConversionResult, String) {
   convert_with_options(mod, default_options())

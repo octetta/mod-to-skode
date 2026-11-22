@@ -202,6 +202,20 @@ pub fn sample_offset_cue_test() {
   bit_array.byte_size(wav_bytes) |> should.not_equal(52)
 }
 
+pub fn stream_and_range_test() {
+  let sg = converter.build_stream_gen(5, 0.0, 1.0, 0.1, 3)
+  sg |> should.equal("/SG 5 0.00 1.00 0.10 3")
+
+  let ss = converter.build_stream_seq(6, [0.0, 12.0, 24.0])
+  ss |> should.equal("/SS 6 0.00 12.00 24.00")
+
+  converter.build_step_range("v0 fb&5", 10, 10)
+  |> should.equal("[v0 fb&5] x10")
+
+  converter.build_step_range("v0 fb&5", 10, 20)
+  |> should.equal("[v0 fb&5] 10 20 X:")
+}
+
 fn list_map(items: List(a), f: fn(a) -> b) -> List(b) {
   case items {
     [] -> []
