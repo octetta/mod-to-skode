@@ -607,6 +607,99 @@ export function pcm8ToWav(rawBitArray) {
   return new BitArray(new Uint8Array(buffer));
 }
 
+export function pcm8ToWavWithCues(rawBitArray, loopStart = 0, loopEnd = 0, hasLoop = false, cueOffsetsList = null) {
+  const rawU8 = rawBitArray.rawBuffer || rawBitArray.buffer || new Uint8Array(rawBitArray);
+  const numSamples = rawU8.length;
+  const dataSize = numSamples * 2;
+
+  let cues = [];
+  if (cueOffsetsList) {
+    if (typeof cueOffsetsList.toArray === "function") {
+      cues = cueOffsetsList.toArray();
+    } else if (Array.isArray(cueOffsetsList)) {
+      cues = cueOffsetsList;
+    }
+  }
+
+  const smplSize = hasLoop ? 68 : 0;
+  const cueSize = cues.length > 0 ? (12 + cues.length * 24) : 0;
+  const totalFileSize = 36 + dataSize + smplSize + cueSize;
+  const totalBufferSize = 44 + dataSize + smplSize + cueSize;
+
+  const buffer = new ArrayBuffer(totalBufferSize);
+  const view = new DataView(buffer);
+
+  // RIFF Header
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, totalFileSize, true); // ChunkSize
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+
+  // "fmt " Chunk
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, 16574, true); // 16574 Hz
+  view.setUint32(28, 33148, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+
+  // "data" Chunk
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, dataSize, true);
+
+  const outU8 = new Uint8Array(buffer, 44, dataSize);
+  for (let i = 0; i < numSamples; i++) {
+    outU8[i * 2] = 0;
+    outU8[i * 2 + 1] = rawU8[i];
+  }
+
+  let offset = 44 + dataSize;
+
+  // Optional "smpl" Chunk
+  if (hasLoop) {
+    view.setUint32(offset, 0x736d706c, false); // "smpl"
+    view.setUint32(offset + 4, 60, true);      // ChunkSize (36 + 24)
+    view.setUint32(offset + 8, 0, true);       // Manufacturer
+    view.setUint32(offset + 12, 0, true);      // Product
+    view.setUint32(offset + 16, Math.round(1000000000 / 16574), true); // Sample Period (ns)
+    view.setUint32(offset + 20, 60, true);      // Unity Note (C4 / 60)
+    view.setUint32(offset + 24, 0, true);       // Pitch Fraction
+    view.setUint32(offset + 28, 0, true);       // SMPTE Format
+    view.setUint32(offset + 32, 0, true);       // SMPTE Offset
+    view.setUint32(offset + 36, 1, true);       // Num Sample Loops = 1
+    view.setUint32(offset + 40, 0, true);       // Sampler Data
+    // Loop 0
+    view.setUint32(offset + 44, 0, true);       // Cue Point ID
+    view.setUint32(offset + 48, 0, true);       // Type: 0 = Forward loop
+    view.setUint32(offset + 52, loopStart, true); // Start sample
+    view.setUint32(offset + 56, Math.max(loopStart, loopEnd - 1), true); // End sample
+    view.setUint32(offset + 60, 0, true);       // Fraction
+    view.setUint32(offset + 64, 0, true);       // Play Count (0 = infinite)
+    offset += 68;
+  }
+
+  // Optional "cue " Chunk
+  if (cues.length > 0) {
+    view.setUint32(offset, 0x63756520, false); // "cue "
+    view.setUint32(offset + 4, 4 + cues.length * 24, true); // ChunkSize
+    view.setUint32(offset + 8, cues.length, true); // Num Cues
+    for (let c = 0; c < cues.length; c++) {
+      const cueOffset = Number(cues[c]);
+      const cueBase = offset + 12 + c * 24;
+      view.setUint32(cueBase + 0, c + 1, true); // ID
+      view.setUint32(cueBase + 4, cueOffset, true); // Position
+      view.setUint32(cueBase + 8, 0x64617461, false); // "data"
+      view.setUint32(cueBase + 12, 0, true); // Chunk Start
+      view.setUint32(cueBase + 16, 0, true); // Block Start
+      view.setUint32(cueBase + 20, cueOffset, true); // Sample Offset
+    }
+    offset += 12 + cues.length * 24;
+  }
+
+  return new BitArray(new Uint8Array(buffer));
+}
+
 export function sliceBitArray(bitArr, start, length) {
   const u8 = bitArr.rawBuffer || bitArr.buffer || new Uint8Array(bitArr);
   const sliced = u8.subarray(start, start + length);

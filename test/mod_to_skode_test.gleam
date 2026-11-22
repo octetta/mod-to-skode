@@ -105,7 +105,7 @@ pub fn parse_synthetic_mod_test() {
 
 pub fn skode_ast_validation_test() {
   skode.version |> should.equal("1.0.5")
-  skode.pulp_version |> should.equal("1.4.11")
+  skode.pulp_version |> should.equal("1.4.12")
 
   let ops = skode.parse_ops("v0 w15 f440 a-6 l1 t0.01,0.05 g0 HS 1")
   list.length(ops) |> should.equal(8)
@@ -115,6 +115,91 @@ pub fn skode_ast_validation_test() {
   let printed = skode.program_to_string(prog)
   let reparsed = skode.parse_program(printed)
   reparsed |> should.equal(prog)
+}
+
+pub fn sample_offset_cue_test() {
+  let title = <<"Offset Cue Test Song":utf8>>
+  // Instrument 1 with 1024 bytes (512 words) of sample data
+  let inst1 = <<
+    "Sample 01             ":utf8,
+    512:16,
+    // length words = 1024 bytes
+    0:8,
+    // finetune
+    64:8,
+    // volume
+    0:16,
+    // loop start
+    0:16,
+    // loop len
+  >>
+  let empty_inst = <<
+    "                      ":utf8,
+    0:16,
+    0:8,
+    64:8,
+    0:16,
+    0:16,
+  >>
+  let insts =
+    bit_array.concat([
+      inst1,
+      bit_array.concat(
+        make_range(2, 31)
+        |> list_map(fn(_) { empty_inst }),
+      ),
+    ])
+
+  let song_len = <<1:8, 0:8>>
+  let order_table =
+    bit_array.concat([
+      <<0:8>>,
+      bit_array.from_string(string.repeat("\u{0000}", 127)),
+    ])
+  let magic = <<"M.K.":utf8>>
+
+  // Row 0, Ch 0: Note with inst 1, effect 9, param 2 (offset 512)
+  // period for C-3 is 428 (0x01AC) -> byte0: (inst high 0 << 4) | (0x01) = 0x01, byte1: 0xAC
+  // byte2: (inst low 1 << 4) | 0x9 = 0x19, byte3: param 2 = 0x02
+  let cell0 = <<0x01, 0xAC, 0x19, 0x02>>
+  let empty_cell = <<0, 0, 0, 0>>
+  let row0 = bit_array.concat([cell0, empty_cell, empty_cell, empty_cell])
+
+  // Row 1, Ch 0: Note with inst 1, effect 0 (should reset offset with VC)
+  let cell1 = <<0x01, 0xAC, 0x10, 0x00>>
+  let row1 = bit_array.concat([cell1, empty_cell, empty_cell, empty_cell])
+
+  // Remaining 62 rows empty
+  let remaining_rows = bit_array.from_string(string.repeat("\u{0000}", 62 * 16))
+  let pattern_data = bit_array.concat([row0, row1, remaining_rows])
+
+  // 1024 bytes PCM sample data for inst 1
+  let sample_pcm = bit_array.from_string(string.repeat("\u{0000}", 1024))
+
+  let mod_bytes =
+    bit_array.concat([
+      title,
+      insts,
+      song_len,
+      order_table,
+      magic,
+      pattern_data,
+      sample_pcm,
+    ])
+
+  let assert Ok(mod_file) = parse("test_offset.mod", mod_bytes)
+  let assert Ok(res) = convert(mod_file)
+
+  // Verify that 0 VC was emitted for the 902 sample offset
+  string.contains(res.skode_text, "0 VC") |> should.be_true
+  // Verify that VC reset was emitted for the next note without 9xx
+  string.contains(res.skode_text, "VC") |> should.be_true
+
+  // Verify sample asset contains RIFF "cue " chunk
+  let assert [#(filename, wav_bytes), ..] = res.samples
+  filename |> should.equal("samples/inst_01.wav")
+  // WAV file should have "cue " chunk
+  bit_array.byte_size(wav_bytes) |> should.not_equal(52)
 }
 
 fn list_map(items: List(a), f: fn(a) -> b) -> List(b) {

@@ -21,6 +21,15 @@ pub fn format_float(val: Float, decimals: Int) -> String
 @external(javascript, "../skred_ffi.mjs", "pcm8ToWav")
 pub fn pcm8_to_wav(raw: BitArray) -> BitArray
 
+@external(javascript, "../skred_ffi.mjs", "pcm8ToWavWithCues")
+pub fn pcm8_to_wav_with_cues(
+  raw: BitArray,
+  loop_start: Int,
+  loop_end: Int,
+  has_loop: Bool,
+  cues: List(Int),
+) -> BitArray
+
 @external(javascript, "../skred_ffi.mjs", "sliceBitArray")
 pub fn slice_bit_array(raw: BitArray, start: Int, length: Int) -> BitArray
 
@@ -646,6 +655,10 @@ pub fn convert_with_options(
 
       let s_last = total_steps - 1
 
+      // Collect all 9xx sample offset cues across the module
+      let cues_set = collect_9xx_cues(unrolled_rows, dict.new(), set.new())
+      let #(inst_cues_sorted, cue_index_map) = build_cues_maps(cues_set)
+
       // Initial channel states
       let initial_channels =
         list.map(make_range(0, nch - 1), fn(c) { #(c, initial_channel_state()) })
@@ -661,6 +674,7 @@ pub fn convert_with_options(
           initial_tempo,
           initial_channels,
           inst_map,
+          cue_index_map,
           dict.new(),
           0.0,
           dict.new(),
@@ -852,6 +866,7 @@ pub fn convert_with_options(
           mod.instruments,
           mod.sample_data_offset,
           mod.raw_bytes,
+          inst_cues_sorted,
           [],
         )
 
@@ -890,6 +905,62 @@ fn find_initial_speed_tempo(
   }
 }
 
+fn collect_9xx_cues(
+  rows: List(UnrolledRow),
+  active_insts: Dict(Int, Int),
+  acc: Set(#(Int, Int)),
+) -> Set(#(Int, Int)) {
+  case rows {
+    [] -> acc
+    [row, ..rest] -> {
+      let #(new_active, new_acc) =
+        list.index_fold(row.notes, #(active_insts, acc), fn(state, note, ch) {
+          let #(cur_insts, cur_acc) = state
+          let inst_id = case note.inst > 0 {
+            True -> note.inst
+            False -> dict.get(cur_insts, ch) |> result.unwrap(0)
+          }
+          let next_insts = case note.inst > 0 {
+            True -> dict.insert(cur_insts, ch, note.inst)
+            False -> cur_insts
+          }
+          let next_acc = case note.effect == 0x9 && note.param > 0 && inst_id > 0 {
+            True -> set.insert(cur_acc, #(inst_id, note.param * 256))
+            False -> cur_acc
+          }
+          #(next_insts, next_acc)
+        })
+      collect_9xx_cues(rest, new_active, new_acc)
+    }
+  }
+}
+
+fn build_cues_maps(
+  cues_set: Set(#(Int, Int)),
+) -> #(Dict(Int, List(Int)), Dict(#(Int, Int), Int)) {
+  let inst_cues_raw =
+    set.to_list(cues_set)
+    |> list.fold(dict.new(), fn(acc, pair) {
+      let #(inst_id, offset) = pair
+      let existing = dict.get(acc, inst_id) |> result.unwrap([])
+      dict.insert(acc, inst_id, [offset, ..existing])
+    })
+
+  let inst_cues_sorted =
+    dict.map_values(inst_cues_raw, fn(_inst_id, offsets) {
+      list.sort(offsets, int.compare)
+    })
+
+  let cue_index_map =
+    dict.fold(inst_cues_sorted, dict.new(), fn(acc, inst_id, offsets) {
+      list.index_fold(offsets, acc, fn(map_acc, off, idx) {
+        dict.insert(map_acc, #(inst_id, off), idx)
+      })
+    })
+
+  #(inst_cues_sorted, cue_index_map)
+}
+
 fn generate_all_rows(
   rows: List(UnrolledRow),
   global_idx: Int,
@@ -898,6 +969,7 @@ fn generate_all_rows(
   cur_tempo: Int,
   chans: Dict(Int, ChannelState),
   inst_map: Dict(Int, Instrument),
+  cue_index_map: Dict(#(Int, Int), Int),
   pat_texts: Dict(Int, String),
   duration_acc: Float,
   step_times: Dict(Int, Float),
@@ -945,6 +1017,7 @@ fn generate_all_rows(
           is_delay,
           chans,
           inst_map,
+          cue_index_map,
           [],
         )
 
@@ -1056,6 +1129,7 @@ fn generate_all_rows(
         new_tempo,
         updated_chans,
         inst_map,
+        cue_index_map,
         final_pat_texts_with_127,
         duration_acc +. row_duration,
         updated_step_times,
@@ -1228,6 +1302,7 @@ fn process_channels(
   is_delay: Bool,
   chans: Dict(Int, ChannelState),
   inst_map: Dict(Int, Instrument),
+  cue_index_map: Dict(#(Int, Int), Int),
   acc: List(#(Int, String, String)),
 ) -> #(Dict(Int, ChannelState), List(#(Int, String, String))) {
   case c >= nch {
@@ -1257,6 +1332,7 @@ fn process_channels(
           note,
           ch,
           inst_map,
+          cue_index_map,
         )
 
       let updated_chans = dict.insert(chans, c, new_ch)
@@ -1272,6 +1348,7 @@ fn process_channels(
         is_delay,
         updated_chans,
         inst_map,
+        cue_index_map,
         [#(c, cmd_str, comment), ..acc],
       )
     }
@@ -1290,6 +1367,7 @@ fn process_single_channel(
   note: Note,
   ch: ChannelState,
   inst_map: Dict(Int, Instrument),
+  cue_index_map: Dict(#(Int, Int), Int),
 ) -> #(ChannelState, String, String) {
   let cmds = []
 
@@ -1440,18 +1518,23 @@ fn process_single_channel(
             Ok(ins) if new_off_mem > 0 && new_off_mem < ins.len - 2 -> {
               case ch_n0.active_vs_offset != new_off_mem {
                 True -> {
-                  let vs =
-                    "VS"
-                    <> int.to_string(new_off_mem)
-                    <> ","
-                    <> int.to_string(ins.len)
+                  let offset_cmd = case
+                    dict.get(cue_index_map, #(ins.id, new_off_mem))
+                  {
+                    Ok(cue_idx) -> int.to_string(cue_idx) <> " VC"
+                    Error(_) ->
+                      "VS"
+                      <> int.to_string(new_off_mem)
+                      <> ","
+                      <> int.to_string(ins.len)
+                  }
                   #(
                     ChannelState(
                       ..ch_n0,
                       sample_offset_mem: new_off_mem,
                       active_vs_offset: new_off_mem,
                     ),
-                    [vs, ..cmds],
+                    [offset_cmd, ..cmds],
                   )
                 }
                 False -> #(
@@ -1465,7 +1548,7 @@ fn process_single_channel(
         }
         False -> {
           case ch_n0.active_vs_offset != 0 {
-            True -> #(ChannelState(..ch_n0, active_vs_offset: 0), ["VS", ..cmds])
+            True -> #(ChannelState(..ch_n0, active_vs_offset: 0), ["VC", ..cmds])
             False -> #(ch_n0, cmds)
           }
         }
@@ -2052,6 +2135,7 @@ fn extract_samples(
   instruments: List(Instrument),
   offset: Int,
   raw: BitArray,
+  inst_cues: Dict(Int, List(Int)),
   acc: List(#(String, BitArray)),
 ) -> List(#(String, BitArray)) {
   case instruments {
@@ -2061,18 +2145,27 @@ fn extract_samples(
       case len > 2 {
         True -> {
           let raw_pcm = slice_bit_array(raw, offset, len)
-          let wav_bytes = pcm8_to_wav(raw_pcm)
+          let cues = dict.get(inst_cues, ins.id) |> result.unwrap([])
+          let loop_end = int.min(ins.len, ins.loop_start + ins.loop_len)
+          let wav_bytes =
+            pcm8_to_wav_with_cues(
+              raw_pcm,
+              ins.loop_start,
+              loop_end,
+              ins.wants_loop,
+              cues,
+            )
           let id_padded = case ins.id < 10 {
             True -> "0" <> int.to_string(ins.id)
             False -> int.to_string(ins.id)
           }
           let filename = "samples/inst_" <> id_padded <> ".wav"
-          extract_samples(rest, offset + len, raw, [
+          extract_samples(rest, offset + len, raw, inst_cues, [
             #(filename, wav_bytes),
             ..acc
           ])
         }
-        False -> extract_samples(rest, offset + len, raw, acc)
+        False -> extract_samples(rest, offset + len, raw, inst_cues, acc)
       }
     }
   }

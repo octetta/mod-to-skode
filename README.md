@@ -250,9 +250,11 @@ The Gleam QuickJS CLI binary is designed as a **zero-dependency, single-file dro
 
 ---
 
-## Legacy Python CLI (`mod2skode.py`)
+## Legacy Python CLI (`mod2skode.py`) [DEPRECATED]
 
-The original reference implementation in Python (`mod2skode.py`) is retained in the repository for historical benchmark comparisons and algorithmic verification:
+> **Note**: `mod2skode.py` is deprecated. Please use the official native CLI binary `bin/mod2skode` (built via `make cli`) or Node CLI `node dist/mod2skode.mjs`.
+
+The original reference implementation in Python (`mod2skode.py`) is retained in the repository for historical benchmark comparisons and reference:
 
 ```bash
 python3 mod2skode.py input.mod [-o output.sk|output.zip] [-c] [-x]

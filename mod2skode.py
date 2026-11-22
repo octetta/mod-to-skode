@@ -940,7 +940,14 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="Convert MOD to Skode")
+    import warnings
+    warnings.warn(
+        "mod2skode.py is deprecated and will be removed in a future release. "
+        "Please use the official Gleam native CLI binary 'bin/mod2skode' or 'make cli'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    parser = argparse.ArgumentParser(description="Convert MOD to Skode (DEPRECATED: use bin/mod2skode)")
     parser.add_argument("filename", help="Input MOD file")
     parser.add_argument("-o", "--output", help="Output .sk file (default: stdout)", default=None)
     parser.add_argument("-c", "--compress", action="store_true", help="Compress blank lines")
