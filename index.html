@@ -29,6 +29,7 @@
       }
       console.error("[SKRED ERR]", ...args);
     };
+    window.__skredVersion = "__SKRED_VERSION__";
     window.Module.locateFile = function(path) {
       let p = window.location.pathname;
       if (/\.[a-zA-Z0-9]+$/.test(p)) {
@@ -36,10 +37,10 @@
       } else if (!p.endsWith("/")) {
         p = p + "/";
       }
-      return new URL("vendor/skred/" + path + "?v=1.4.12", new URL(p, window.location.origin)).href;
+      return new URL("vendor/skred/" + path + "?v=" + window.__skredVersion, new URL(p, window.location.origin)).href;
     };
   </script>
-  <script src="./vendor/skred/skred_api.js?v=1.4.12"></script>
+  <script src="./vendor/skred/skred_api.js?v=__SKRED_VERSION__"></script>
   <script type="module" src="/src/entry.mjs"></script>
 </body>
 </html>

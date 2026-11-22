@@ -20,6 +20,16 @@ export function getAppBaseUrl() {
 
 const win = typeof window !== "undefined" ? window : globalThis;
 
+export function getSkredVersion() {
+  if (typeof window !== "undefined" && window.__skredVersion && !window.__skredVersion.startsWith("__")) {
+    return window.__skredVersion;
+  }
+  if (typeof __SKRED_VERSION__ !== "undefined") {
+    return __SKRED_VERSION__;
+  }
+  return "latest";
+}
+
 let moduleReady = false;
 let engineStarted = false;
 let commandQueue = [];
@@ -73,8 +83,9 @@ export async function initWorkletEngine() {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       workletAudioContext = new AudioCtx({ latencyHint: "interactive" });
 
-      const processorUrl = new URL("vendor/skred/skred_worklet_processor.js?v=1.4.12", getAppBaseUrl()).href;
-      const wasmUrl = new URL("vendor/skred/skred_worklet_engine.wasm?v=1.4.12", getAppBaseUrl()).href;
+      const v = getSkredVersion();
+      const processorUrl = new URL(`vendor/skred/skred_worklet_processor.js?v=${v}`, getAppBaseUrl()).href;
+      const wasmUrl = new URL(`vendor/skred/skred_worklet_engine.wasm?v=${v}`, getAppBaseUrl()).href;
 
       console.log("[mod-to-skode] Loading AudioWorklet module:", processorUrl);
       await workletAudioContext.audioWorklet.addModule(processorUrl);
@@ -217,10 +228,11 @@ export function initEngine(callback) {
 
   win.Module = win.Module || {};
   win.Module.locateFile = function (path) {
+    const v = getSkredVersion();
     if (typeof window !== "undefined") {
-      return new URL("vendor/skred/" + path + "?v=1.4.12", getAppBaseUrl()).href;
+      return new URL(`vendor/skred/${path}?v=${v}`, getAppBaseUrl()).href;
     }
-    return "/vendor/skred/" + path + "?v=1.4.12";
+    return `/vendor/skred/${path}?v=${v}`;
   };
 
   createReplDom();
