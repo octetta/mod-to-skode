@@ -657,7 +657,7 @@ pub fn convert_with_options(
 
       // Collect all 9xx sample offset cues across the module
       let cues_set = collect_9xx_cues(unrolled_rows, dict.new(), set.new())
-      let #(inst_cues_sorted, cue_index_map) = build_cues_maps(cues_set)
+      let #(inst_cues_sorted, cue_index_map) = build_cues_maps(cues_set, inst_map)
 
       // Initial channel states
       let initial_channels =
@@ -937,6 +937,7 @@ fn collect_9xx_cues(
 
 fn build_cues_maps(
   cues_set: Set(#(Int, Int)),
+  inst_map: Dict(Int, Instrument),
 ) -> #(Dict(Int, List(Int)), Dict(#(Int, Int), Int)) {
   let inst_cues_raw =
     set.to_list(cues_set)
@@ -953,8 +954,12 @@ fn build_cues_maps(
 
   let cue_index_map =
     dict.fold(inst_cues_sorted, dict.new(), fn(acc, inst_id, offsets) {
+      let base_idx = case dict.get(inst_map, inst_id) {
+        Ok(ins) if ins.wants_loop -> 1
+        _ -> 0
+      }
       list.index_fold(offsets, acc, fn(map_acc, off, idx) {
-        dict.insert(map_acc, #(inst_id, off), idx)
+        dict.insert(map_acc, #(inst_id, off), base_idx + idx)
       })
     })
 
@@ -1521,7 +1526,7 @@ fn process_single_channel(
                   let offset_cmd = case
                     dict.get(cue_index_map, #(ins.id, new_off_mem))
                   {
-                    Ok(cue_idx) -> int.to_string(cue_idx) <> " VC"
+                    Ok(cue_idx) -> "VC" <> int.to_string(cue_idx)
                     Error(_) ->
                       "VS"
                       <> int.to_string(new_off_mem)

@@ -190,8 +190,8 @@ pub fn sample_offset_cue_test() {
   let assert Ok(mod_file) = parse("test_offset.mod", mod_bytes)
   let assert Ok(res) = convert(mod_file)
 
-  // Verify that 0 VC was emitted for the 902 sample offset
-  string.contains(res.skode_text, "0 VC") |> should.be_true
+  // Verify that VC0 was emitted for the 902 sample offset
+  string.contains(res.skode_text, "VC0") |> should.be_true
   // Verify that VC reset was emitted for the next note without 9xx
   string.contains(res.skode_text, "VC") |> should.be_true
 
