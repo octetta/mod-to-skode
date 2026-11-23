@@ -104,8 +104,8 @@ pub fn parse_synthetic_mod_test() {
 }
 
 pub fn skode_ast_validation_test() {
-  skode.version |> should.equal("1.0.6")
-  skode.pulp_version |> should.equal("1.4.13")
+  skode.version |> should.equal("1.1.0")
+  skode.pulp_version |> should.equal("1.5.0")
 
   let ops = skode.parse_ops("v0 w15 f440 a-6 l1 t0.01,0.05 g0 HS 1")
   list.length(ops) |> should.equal(8)
