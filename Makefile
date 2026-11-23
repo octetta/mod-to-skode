@@ -146,18 +146,18 @@ preview: build
 
 test:
 	@echo "==> Running Gleam unit tests..."
-	$(GLEAM) test --target javascript
+	mise exec -- $(GLEAM) test --target javascript
 
 test-gleam: test
 
 check:
 	@echo "==> Verifying compilation and formatting..."
-	$(GLEAM) check
-	$(GLEAM) format --check src test
+	mise exec -- $(GLEAM) check
+	mise exec -- $(GLEAM) format --check src test
 
 format:
 	@echo "==> Formatting Gleam source and test files..."
-	$(GLEAM) format src test
+	mise exec -- $(GLEAM) format src test
 
 # Generic rules to convert a .mod file in $(MOD_DIR) to a .zip using bin/mod2skode
 %.zip: $(MOD_DIR)/%.mod $(CLI_BIN)
