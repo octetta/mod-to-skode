@@ -211,6 +211,18 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
       } else {
         this.commandQueue.push(data);
       }
+    } else if (data.type === "unlink" || data.type === "remove_file") {
+      this.removeFile(data.path);
+    } else if (data.type === "midi" && data.bytes && this.module) {
+      const len = data.bytes.length;
+      if (typeof this.module._skred_midi_send_raw === "function") {
+        const ptr = this.module._malloc(len);
+        if (ptr) {
+          this.module.HEAPU8.set(data.bytes, ptr);
+          this.module._skred_midi_send_raw(ptr, len);
+          this.module._free(ptr);
+        }
+      }
     } else if (data.type === "features") {
       const ptr = (this.module && typeof this.module._skred_features === "function") ? this.module._skred_features() : 0;
       const text = ptr ? this.module.UTF8ToString(ptr) : "";
@@ -241,6 +253,18 @@ class SkredWorkletProcessor extends AudioWorkletProcessor {
     } catch (err) {
       console.error("[SkredWorklet] Error writing file to VFS:", err);
       this.port.postMessage({ type: "error", error: String(err) });
+    }
+  }
+
+  removeFile(filePath) {
+    if (!this.module || !this.module.FS || !filePath) return;
+    try {
+      const cleanPath = filePath.startsWith("/") ? filePath : "/" + filePath;
+      const relPath = filePath.replace(/^\/+/, "");
+      try { this.module.FS.unlink(cleanPath); } catch (e) {}
+      try { this.module.FS.unlink(relPath); } catch (e) {}
+    } catch (err) {
+      console.warn("[SkredWorklet] Error unlinking file:", err);
     }
   }
 

@@ -1687,8 +1687,7 @@ fn view_samples_list(
           html.div([class("samples-summary-left")], [
             html.span([class("samples-badge-count")], [
               text(
-                int.to_string(list.length(conv.samples))
-                <> " WAV Audio Samples",
+                int.to_string(list.length(conv.samples)) <> " WAV Audio Samples",
               ),
             ]),
           ]),
@@ -1725,8 +1724,7 @@ fn view_samples_list(
                 let id_opt = case string.split(path, "inst_") {
                   [_, rest] ->
                     case string.split(rest, ".wav") {
-                      [num_str, _] ->
-                        int.parse(num_str) |> option.from_result
+                      [num_str, _] -> int.parse(num_str) |> option.from_result
                       _ -> option.None
                     }
                   _ -> option.None
@@ -1774,7 +1772,7 @@ fn view_samples_list(
 
                 let length_str = case ins_opt {
                   Some(ins) -> {
-                    let sec = int.to_float(ins.len) /. 16574.0
+                    let sec = int.to_float(ins.len) /. 16_574.0
                     int.to_string(ins.len)
                     <> " spl ("
                     <> converter.format_float(sec, 2)
@@ -1782,7 +1780,7 @@ fn view_samples_list(
                   }
                   None -> {
                     let spl = int.max(0, size - 44) / 2
-                    let sec = int.to_float(spl) /. 16574.0
+                    let sec = int.to_float(spl) /. 16_574.0
                     int.to_string(spl)
                     <> " spl ("
                     <> converter.format_float(sec, 2)
@@ -1805,8 +1803,7 @@ fn view_samples_list(
                       False ->
                         html.span([class("badge-oneshot")], [text("1-Shot")])
                     }
-                  None ->
-                    html.span([class("badge-oneshot")], [text("1-Shot")])
+                  None -> html.span([class("badge-oneshot")], [text("1-Shot")])
                 }
 
                 html.tr([class("row-active")], [

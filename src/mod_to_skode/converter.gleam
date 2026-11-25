@@ -564,7 +564,11 @@ pub fn build_stream_seq(stream_id: Int, values: List(Float)) -> String {
   <> string.join(list.map(values, fn(v) { format_float(v, 2) }), " ")
 }
 
-pub fn build_step_range(program: String, start_step: Int, end_step: Int) -> String {
+pub fn build_step_range(
+  program: String,
+  start_step: Int,
+  end_step: Int,
+) -> String {
   case start_step == end_step {
     True -> "[" <> program <> "] x" <> int.to_string(start_step)
     False ->
@@ -697,7 +701,8 @@ pub fn convert_with_options(
 
       // Collect all 9xx sample offset cues across the module
       let cues_set = collect_9xx_cues(unrolled_rows, dict.new(), set.new())
-      let #(inst_cues_sorted, cue_index_map) = build_cues_maps(cues_set, inst_map)
+      let #(inst_cues_sorted, cue_index_map) =
+        build_cues_maps(cues_set, inst_map)
 
       // Initial channel states
       let initial_channels =
@@ -964,7 +969,9 @@ fn collect_9xx_cues(
             True -> dict.insert(cur_insts, ch, note.inst)
             False -> cur_insts
           }
-          let next_acc = case note.effect == 0x9 && note.param > 0 && inst_id > 0 {
+          let next_acc = case
+            note.effect == 0x9 && note.param > 0 && inst_id > 0
+          {
             True -> set.insert(cur_acc, #(inst_id, note.param * 256))
             False -> cur_acc
           }
