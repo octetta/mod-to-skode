@@ -507,12 +507,17 @@ fn add_pattern_delays(
   }
 }
 
+pub type LayoutMode {
+  LayoutUnrolled
+  LayoutScene
+}
+
 pub type ConvertOptions {
-  ConvertOptions(stereo_mode: StereoMode)
+  ConvertOptions(stereo_mode: StereoMode, layout: LayoutMode)
 }
 
 pub fn default_options() -> ConvertOptions {
-  ConvertOptions(stereo_mode: StereoHeadphone)
+  ConvertOptions(stereo_mode: StereoHeadphone, layout: LayoutUnrolled)
 }
 
 pub fn get_channel_pan(c: Int, mode: StereoMode) -> String {
@@ -687,20 +692,6 @@ pub fn convert_with_options(
           }
         })
 
-      // Patterns setup: y0..y{nch} %initial_speed and yl {total_steps}
-      let pat_speed_defs =
-        list.map(make_range(0, nch), fn(c) {
-          "y"
-          <> int.to_string(c)
-          <> " %"
-          <> int.to_string(initial_speed)
-          <> "\nyl "
-          <> int.to_string(total_steps)
-          <> "\n"
-        })
-
-      let s_last = total_steps - 1
-
       // Collect all 9xx sample offset cues across the module
       let cues_set = collect_9xx_cues(unrolled_rows, dict.new(), set.new())
       let #(inst_cues_sorted, cue_index_map) =
@@ -711,7 +702,7 @@ pub fn convert_with_options(
         list.map(make_range(0, nch - 1), fn(c) { #(c, initial_channel_state()) })
         |> dict.from_list
 
-      // Generate pattern rows
+      // Generate full unrolled timing and metrics
       let #(pattern_texts, _final_chans, total_duration, step_times) =
         generate_all_rows(
           unrolled_rows,
@@ -727,82 +718,16 @@ pub fn convert_with_options(
           dict.new(),
         )
 
-      // Natural song end step
-      let end_step = s_last
-      let end_ch_lines =
-        list.map(make_range(0, nch - 1), fn(c) {
-          let line = case c == 0 {
-            True -> "[Z0 ce 127 v0] x" <> int.to_string(end_step) <> "\n"
-            False ->
-              "[v"
-              <> int.to_string(c)
-              <> "] x"
-              <> int.to_string(end_step)
-              <> "\n"
-          }
-          #(c, line)
-        })
+      let s_last = total_steps - 1
+      let num_unique_pats = list.length(mod.patterns)
+      let can_use_scenes = case options.layout {
+        LayoutScene ->
+          num_unique_pats * { nch + 1 } < 255
+          && mod.song_length <= 128
+          && nch <= 4
+        LayoutUnrolled -> False
+      }
 
-      let end_cond_line = #(
-        nch,
-        "[Z0 +2.0 ce 127] x" <> int.to_string(end_step) <> "\n",
-      )
-
-      let all_end_lines = [end_cond_line, ..end_ch_lines]
-      let full_pattern_texts =
-        list.fold(all_end_lines, pattern_texts, fn(acc, item) {
-          let #(ch_id, line) = item
-          let existing = dict.get(acc, ch_id) |> result.unwrap("")
-          dict.insert(acc, ch_id, existing <> line)
-        })
-
-      // Format pattern tracks y0..y{nch}
-      let pat_tracks =
-        list.map(make_range(0, nch), fn(c) {
-          let text = dict.get(full_pattern_texts, c) |> result.unwrap("")
-          case c < nch {
-            True ->
-              "# ==============================================================================\n"
-              <> "# TRACK "
-              <> int.to_string(c)
-              <> " (Channel "
-              <> int.to_string(c + 1)
-              <> ")\n"
-              <> "# ==============================================================================\n"
-              <> "y"
-              <> int.to_string(c)
-              <> "\n"
-              <> "[#] x "
-              <> int.to_string(s_last)
-              <> "\n"
-              <> text
-            False ->
-              "# ==============================================================================\n"
-              <> "# CONDUCTOR TRACK (Speed & Tempo Automation)\n"
-              <> "# ==============================================================================\n"
-              <> "y"
-              <> int.to_string(c)
-              <> "\n"
-              <> "[#] x "
-              <> int.to_string(s_last)
-              <> "\n"
-              <> text
-          }
-        })
-
-      // Stop & Play Macros matching Skred v0.85.1
-      let stop_cmds = "/cer 0 Z0 O DQ ?ce!"
-      let end_macros =
-        "\n# === PATTERN TRANSITIONS & END OF SONG LOOP ===\n"
-        <> "["
-        <> stop_cmds
-        <> "] /ceb 4 127\n\n/cer 1\n\n"
-
-      let pat_list =
-        list.map(make_range(0, nch), int.to_string)
-        |> list.append(["127"])
-        |> string.join(" ")
-      let play_cmds = "?ce! /cer 1 Z0 Z! (" <> pat_list <> ") Z>"
       let pause_cmds = "Z2 O"
       let resume_cmds = "Z3"
       let efx_cmds =
@@ -816,16 +741,300 @@ pub fn convert_with_options(
         })
         |> string.join(" ")
 
-      let macro_defs = [
-        "# === MACROS ===\n",
-        "# The file does not start automatically. Type 'play' to begin, 'pause'/'resume' to pause/continue, and 'stop' to halt.\n",
-        "[play]: " <> play_cmds <> ";\n",
-        "[pause]: " <> pause_cmds <> ";\n",
-        "[resume]: " <> resume_cmds <> ";\n",
-        "[stop]: " <> stop_cmds <> ";\n",
-        "[efx!]: " <> efx_cmds <> ";\n\n",
-        "[nofx]: " <> nofx_cmds <> ";\n\n",
-      ]
+      let #(
+        pat_speed_defs,
+        master_cond,
+        pat_tracks,
+        scene_matrix_block,
+        play_cmds,
+        stop_cmds,
+        extra_macro_defs,
+        extra_banner_defs,
+      ) = case can_use_scenes {
+        True -> {
+          let pat_indices = make_range(0, num_unique_pats - 1)
+          let generated =
+            list.map(pat_indices, fn(p) {
+              let pat =
+                list.drop(mod.patterns, p) |> list.first |> result.unwrap([])
+              let p_rows =
+                list.index_map(pat, fn(row_notes, r) {
+                  UnrolledRow(0, p, r, row_notes, False)
+                })
+              let #(p_texts, _, _, _) =
+                generate_all_rows(
+                  p_rows,
+                  0,
+                  nch,
+                  initial_speed,
+                  initial_tempo,
+                  initial_channels,
+                  inst_map,
+                  cue_index_map,
+                  dict.new(),
+                  0.0,
+                  dict.new(),
+                )
+              let ch_indices = make_range(0, nch)
+              list.map(ch_indices, fn(c) {
+                let pat_idx = p * { nch + 1 } + c
+                let speed_def =
+                  "y"
+                  <> int.to_string(pat_idx)
+                  <> " %"
+                  <> int.to_string(initial_speed)
+                  <> "\nyl 64\n"
+                let track_header = case c < nch {
+                  True ->
+                    "# ==============================================================================\n"
+                    <> "# TRACK "
+                    <> int.to_string(c)
+                    <> " (Channel "
+                    <> int.to_string(c + 1)
+                    <> ", Pattern "
+                    <> int.to_string(p)
+                    <> ")\n"
+                    <> "# ==============================================================================\n"
+                  False ->
+                    "# ==============================================================================\n"
+                    <> "# CONDUCTOR TRACK (Pattern "
+                    <> int.to_string(p)
+                    <> ")\n"
+                    <> "# ==============================================================================\n"
+                }
+                let body = dict.get(p_texts, c) |> result.unwrap("")
+                let init_voice = case c < nch {
+                  True -> "[v" <> int.to_string(c) <> "] x0\n"
+                  False -> ""
+                }
+                let track_text =
+                  track_header
+                  <> "y"
+                  <> int.to_string(pat_idx)
+                  <> "\n[#] x 63\n"
+                  <> init_voice
+                  <> body
+                #(speed_def, track_text)
+              })
+            })
+            |> list.flatten
+
+          let speeds = list.map(generated, fn(pair) { pair.0 })
+          let tracks = list.map(generated, fn(pair) { pair.1 })
+
+          let master = [
+            "# === THE MASTER CONDUCTOR ===\n",
+            "# y127 is an empty pattern set as the 'Master' (yp127).\n",
+            "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
+            "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
+            "y127 %"
+              <> int.to_string(initial_speed)
+              <> "\nyl 64\n"
+              <> "[v0] x63 yp127\n\n",
+          ]
+
+          let scene_defs =
+            list.index_map(mod.sequence, fn(p, idx) {
+              let pat_ids =
+                list.map(make_range(0, nch), fn(c) {
+                  int.to_string(p * { nch + 1 } + c)
+                })
+              let unused = list.repeat("-1", 6 - nch)
+              let tokens =
+                list.flatten([pat_ids, unused, ["127"]]) |> string.join(" ")
+              "( " <> tokens <> " ) scene_define " <> int.to_string(idx) <> "\n"
+            })
+
+          let scene_chains =
+            list.index_map(mod.sequence, fn(_, idx) {
+              let next_s = case idx == mod.song_length - 1 {
+                True -> -1
+                False -> idx + 1
+              }
+              int.to_string(idx)
+              <> " 1 "
+              <> int.to_string(next_s)
+              <> " scene_chain\n"
+            })
+
+          let scene_matrix = [
+            "\n# === SCENE MATRIX (Tracker Order Table) ===\n",
+            string.join(scene_defs, ""),
+            "\n# === SCENE CHAINING (Musical Outro & Auto-Stop) ===\n",
+            string.join(scene_chains, ""),
+            "\n",
+          ]
+
+          let restart_target = case mod.restart_pos < mod.song_length {
+            True -> mod.restart_pos
+            False -> 0
+          }
+          let loop_c =
+            int.to_string(mod.song_length - 1)
+            <> " 1 "
+            <> int.to_string(restart_target)
+            <> " scene_chain"
+          let outro_c =
+            int.to_string(mod.song_length - 1) <> " 1 -1 scene_chain"
+
+          let macros = [
+            "[loop]: " <> loop_c <> ";\n",
+            "[outro]: " <> outro_c <> ";\n",
+          ]
+
+          let banners = [
+            "[loop : " <> loop_c <> "] puts\n",
+            "[outro: " <> outro_c <> "] puts\n",
+          ]
+
+          #(
+            speeds,
+            master,
+            tracks,
+            scene_matrix,
+            "Z0 Z! scene_now 0",
+            "stop",
+            macros,
+            banners,
+          )
+        }
+        False -> {
+          // Unrolled mode (Standard Tracker Timeline & Web Visualizer Target)
+          let pat_speed_defs =
+            list.map(make_range(0, nch), fn(c) {
+              "y"
+              <> int.to_string(c)
+              <> " %"
+              <> int.to_string(initial_speed)
+              <> "\nyl "
+              <> int.to_string(total_steps)
+              <> "\n"
+            })
+
+          let end_step = s_last
+          let end_ch_lines =
+            list.map(make_range(0, nch - 1), fn(c) {
+              let line = case c == 0 {
+                True -> "[Z0 ce 127 v0] x" <> int.to_string(end_step) <> "\n"
+                False ->
+                  "[v"
+                  <> int.to_string(c)
+                  <> "] x"
+                  <> int.to_string(end_step)
+                  <> "\n"
+              }
+              #(c, line)
+            })
+
+          let end_cond_line = #(
+            nch,
+            "[Z0 +2.0 ce 127] x" <> int.to_string(end_step) <> "\n",
+          )
+
+          let all_end_lines = [end_cond_line, ..end_ch_lines]
+          let full_pattern_texts =
+            list.fold(all_end_lines, pattern_texts, fn(acc, item) {
+              let #(ch_id, line) = item
+              let existing = dict.get(acc, ch_id) |> result.unwrap("")
+              dict.insert(acc, ch_id, existing <> line)
+            })
+
+          let pat_tracks =
+            list.map(make_range(0, nch), fn(c) {
+              let text = dict.get(full_pattern_texts, c) |> result.unwrap("")
+              let init_voice = case c < nch {
+                True -> "[v" <> int.to_string(c) <> "] x0\n"
+                False -> ""
+              }
+              case c < nch {
+                True ->
+                  "# ==============================================================================\n"
+                  <> "# TRACK "
+                  <> int.to_string(c)
+                  <> " (Channel "
+                  <> int.to_string(c + 1)
+                  <> ")\n"
+                  <> "# ==============================================================================\n"
+                  <> "y"
+                  <> int.to_string(c)
+                  <> "\n"
+                  <> "[#] x "
+                  <> int.to_string(s_last)
+                  <> "\n"
+                  <> init_voice
+                  <> text
+                False ->
+                  "# ==============================================================================\n"
+                  <> "# CONDUCTOR TRACK (Speed & Tempo Automation)\n"
+                  <> "# ==============================================================================\n"
+                  <> "y"
+                  <> int.to_string(c)
+                  <> "\n"
+                  <> "[#] x "
+                  <> int.to_string(s_last)
+                  <> "\n"
+                  <> text
+              }
+            })
+
+          let y127_steps =
+            dict.get(full_pattern_texts, 127) |> result.unwrap("")
+          let master_cond = [
+            "# === THE MASTER CONDUCTOR ===\n",
+            "# y127 is an empty pattern set as the 'Master' (yp127).\n",
+            "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
+            "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
+            "y127 %"
+              <> int.to_string(initial_speed)
+              <> "\nyl "
+              <> int.to_string(total_steps)
+              <> "\n"
+              <> y127_steps
+              <> "[v0] x"
+              <> int.to_string(s_last)
+              <> " yp127\n\n",
+          ]
+
+          let pat_list =
+            list.map(make_range(0, nch), int.to_string)
+            |> list.append(["127"])
+            |> string.join(" ")
+
+          #(
+            pat_speed_defs,
+            master_cond,
+            pat_tracks,
+            [],
+            "Z0 Z! (" <> pat_list <> ") Z>",
+            "stop",
+            [],
+            [],
+          )
+        }
+      }
+
+      // Stop & Play Macros matching Skred v0.85.1
+      let end_macros =
+        "\n# === PATTERN TRANSITIONS & END OF SONG HOOK ===\n"
+        <> "["
+        <> stop_cmds
+        <> "] /ceb 4 127\n\n"
+
+      let macro_defs =
+        list.flatten([
+          [
+            "# === MACROS ===\n",
+            "# The file does not start automatically. Type 'play' to begin, 'pause'/'resume' to pause/continue, and 'stop' to halt.\n",
+            "[play]: " <> play_cmds <> ";\n",
+            "[pause]: " <> pause_cmds <> ";\n",
+            "[resume]: " <> resume_cmds <> ";\n",
+          ],
+          extra_macro_defs,
+          [
+            "[efx!]: " <> efx_cmds <> ";\n\n",
+            "[nofx]: " <> nofx_cmds <> ";\n\n",
+          ],
+        ])
 
       let raw_credits =
         list.map(mod.instruments, fn(ins) {
@@ -871,27 +1080,13 @@ pub fn convert_with_options(
           [
             "[play : " <> play_cmds <> "] puts\n",
             "[stop : " <> stop_cmds <> "] puts\n",
+          ],
+          extra_banner_defs,
+          [
             "[efx! : " <> efx_cmds <> "] puts\n",
             "[nofx : " <> nofx_cmds <> "] puts\n",
           ],
         ])
-
-      let y127_steps = dict.get(full_pattern_texts, 127) |> result.unwrap("")
-      let master_cond = [
-        "# === THE MASTER CONDUCTOR ===\n",
-        "# y127 is an empty pattern set as the 'Master' (yp127).\n",
-        "# Because it is the master, any pattern launched with 'zq1' (queue start)\n",
-        "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
-        "y127 %"
-          <> int.to_string(initial_speed)
-          <> "\nyl "
-          <> int.to_string(total_steps)
-          <> "\n"
-          <> y127_steps
-          <> "[v0] x"
-          <> int.to_string(s_last)
-          <> " yp127\n\n",
-      ]
 
       let all_skode_parts =
         list.flatten([
@@ -903,6 +1098,7 @@ pub fn convert_with_options(
           pat_speed_defs,
           master_cond,
           pat_tracks,
+          scene_matrix_block,
           [end_macros],
           macro_defs,
           banner_defs,
@@ -1245,14 +1441,14 @@ fn build_conductor_cmds(
   }
 }
 
-fn pad_2(n: Int) -> String {
+pub fn pad_2(n: Int) -> String {
   case n < 10 {
     True -> "0" <> int.to_string(n)
     False -> int.to_string(n)
   }
 }
 
-fn midi_to_note_name(midi: Int) -> String {
+pub fn midi_to_note_name(midi: Int) -> String {
   let note_names = [
     "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
   ]
@@ -1265,7 +1461,7 @@ fn midi_to_note_name(midi: Int) -> String {
   name <> int.to_string(oct)
 }
 
-fn effect_description(eff: Int, param: Int) -> String {
+pub fn effect_description(eff: Int, param: Int) -> String {
   let ext_type = int.bitwise_shift_right(param, 4)
   case eff {
     0x0 if param > 0 -> "Arp"

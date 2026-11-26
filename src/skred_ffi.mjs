@@ -121,11 +121,9 @@ export async function initWorkletEngine() {
           workletReady = true;
           useWorklet = true;
           workletVersion = data.version && !data.version.startsWith("unknown") ? data.version : getSkredVersion();
-          sendWorkletCommand("Z0");
+          sendWorkletCommand("stop;");
           sendWorkletCommand("Y-1");
-          sendWorkletCommand("S-1");
           sendWorkletCommand("V" + currentMasterVolume);
-          sendWorkletCommand("[stop]: /cer 0 Z0 O DQ ?ce!;");
           sendWorkletCommand("[play]: ?ce! /cer 1 Z0 Z! (0 1 2 3 4 127) Z>;");
           sendWorkletCommand("[pause]: Z2 O;");
           sendWorkletCommand("[resume]: Z3;");
@@ -807,7 +805,7 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
   ensureAudioContext();
 
   // 1. Immediately silence previous playback smoothly: mute master volume first to prevent click/pop
-  executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+  executeSkredCommand("V-100; stop; Y-1; %zu;");
 
   createZipArchive(mainSkText, samplesList, (_blob, zipData) => {
     if (!zipData) {
@@ -852,7 +850,7 @@ export function loadAndPlaySkode(mainSkText, samplesList, totalSteps, startStep 
       try { M.FS.writeFile("song.zip", zipData); } catch (e) {}
 
       // Clean engine state right before mounting new zip
-      executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu;");
+      executeSkredCommand("V-100; stop; Y-1; %zu;");
       executeSkredCommand(playMacro);
 
       // Mount zip via Skode VFS (%z) and trigger playback with control events enabled for pattern 0
@@ -907,7 +905,7 @@ export function stopPlayback() {
   isPlaybackPaused = false;
   lastReportedStep = -1;
   ensureAudioContext();
-  executeSkredCommand("V-100; /cer 0 Z0 O DQ ?ce!; S-1; Y-1; %zu; V" + currentMasterVolume + ";");
+  executeSkredCommand("V-100; stop; Y-1; %zu; V" + currentMasterVolume + ";");
 }
 
 export function previewSample(rawBitArray) {

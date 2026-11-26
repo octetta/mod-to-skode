@@ -44,6 +44,7 @@ pub type CliOptions {
     input_file: Option(String),
     output_file: Option(String),
     extract: Bool,
+    scene_mode: Bool,
     show_help: Bool,
   )
 }
@@ -53,6 +54,8 @@ fn parse_cli_args(args: List(String), opts: CliOptions) -> CliOptions {
     [] -> opts
     ["-h", ..rest] | ["--help", ..rest] ->
       parse_cli_args(rest, CliOptions(..opts, show_help: True))
+    ["-s", ..rest] | ["--scene", ..rest] | ["--scenes", ..rest] ->
+      parse_cli_args(rest, CliOptions(..opts, scene_mode: True))
     ["-x", ..rest] | ["--extract", ..rest] ->
       parse_cli_args(rest, CliOptions(..opts, extract: True))
     ["-o", out, ..rest] | ["--output", out, ..rest] ->
@@ -79,10 +82,12 @@ fn print_help() {
     <> "  mod2skode <input.mod> [options]\n\n"
     <> "Options:\n"
     <> "  -o, --output <file>    Output .sk script or .zip archive (default: stdout)\n"
+    <> "  -s, --scenes           Output Scene Matrix layout (smaller file, discrete patterns, auto-stop)\n"
     <> "  -x, --extract          Extract 16-bit WAV samples to samples/ directory\n"
     <> "  -h, --help             Show this help message\n\n"
     <> "Examples:\n"
     <> "  mod2skode song.mod -o song.zip         Package into standalone ready-to-play ZIP\n"
+    <> "  mod2skode song.mod -s -o song.sk       Output compact Scene Matrix script\n"
     <> "  mod2skode song.mod -o song.sk -x       Output script and extract WAV samples\n"
     <> "  mod2skode song.mod > song.sk           Stream script directly to stdout\n",
   )
@@ -147,6 +152,7 @@ pub fn main() {
       output_file: None,
       extract: False,
       show_help: False,
+      scene_mode: False,
     )
   let opts = parse_cli_args(raw_args, default_opts)
 
@@ -176,7 +182,15 @@ pub fn main() {
                   exit_process(1)
                 }
                 Ok(mod_file) -> {
-                  case converter.convert(mod_file) {
+                  let conv_opts =
+                    converter.ConvertOptions(
+                      ..converter.default_options(),
+                      layout: case opts.scene_mode {
+                        True -> converter.LayoutScene
+                        False -> converter.LayoutUnrolled
+                      },
+                    )
+                  case converter.convert_with_options(mod_file, conv_opts) {
                     Error(err) -> {
                       print_stderr("Error converting MOD: " <> err <> "\n")
                       exit_process(1)

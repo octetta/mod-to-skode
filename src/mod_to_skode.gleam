@@ -21,13 +21,14 @@ import mod_to_skode/converter
 import mod_to_skode/mod_parser
 import mod_to_skode/types.{
   type ConversionResult, type Instrument, type ModFile, type Model, type Msg,
-  ConversionCompleted, ConvertClicked, DownloadZipClicked, EngineStatusChanged,
-  FileDropped, LoadDemo, MasterVolumeChanged, ModArchiveFetchFailed,
-  ModArchiveFetchStarted, ModArchiveInfo, ModArchiveLoaded, Model, PanicClicked,
-  PauseClicked, PlayClicked, PlaybackEnded, PlaybackStepChanged,
-  PreviewSampleClicked, RandomModArchiveClicked, ResetClicked, ResumeClicked,
-  SeekStep, StereoAmiga, StereoHeadphone, StereoModeChanged, StereoMono,
-  StopClicked, TabSelected, ToggleReplClicked,
+  type Note, type StereoMode, ConversionCompleted, ConvertClicked,
+  DownloadZipClicked, EngineStatusChanged, FileDropped, LoadDemo,
+  MasterVolumeChanged, ModArchiveFetchFailed, ModArchiveFetchStarted,
+  ModArchiveInfo, ModArchiveLoaded, Model, Note, PanicClicked, PauseClicked,
+  PlayClicked, PlaybackEnded, PlaybackStepChanged, PreviewSampleClicked,
+  RandomModArchiveClicked, ResetClicked, ResumeClicked, SeekStep, StereoAmiga,
+  StereoHeadphone, StereoModeChanged, StereoMono, StopClicked, TabSelected,
+  ToggleReplClicked,
 }
 import skode
 import skode/transport/wasm
@@ -262,7 +263,7 @@ pub fn init(_) -> #(Model, Effect(Msg)) {
       is_converting: False,
       error_message: None,
       status_text: "Ready. Drag and drop any .mod file to convert.",
-      active_tab: "info",
+      active_tab: "tracker",
       modarchive_info: None,
       stereo_mode: StereoHeadphone,
       master_volume: -6,
@@ -319,7 +320,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           case
             converter.convert_with_options(
               mod_file,
-              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+              converter.ConvertOptions(
+                stereo_mode: model.stereo_mode,
+                layout: converter.LayoutUnrolled,
+              ),
             )
           {
             Error(err) -> {
@@ -372,7 +376,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           case
             converter.convert_with_options(
               mod_file,
-              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+              converter.ConvertOptions(
+                stereo_mode: model.stereo_mode,
+                layout: converter.LayoutUnrolled,
+              ),
             )
           {
             Error(err) -> {
@@ -550,7 +557,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           let skode_text = case
             converter.convert_with_options(
               mod_file,
-              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+              converter.ConvertOptions(
+                stereo_mode: model.stereo_mode,
+                layout: converter.LayoutUnrolled,
+              ),
             )
           {
             Ok(new_res) -> new_res.skode_text
@@ -670,7 +680,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           case
             converter.convert_with_options(
               mod_file,
-              converter.ConvertOptions(stereo_mode: model.stereo_mode),
+              converter.ConvertOptions(
+                stereo_mode: model.stereo_mode,
+                layout: converter.LayoutUnrolled,
+              ),
             )
           {
             Error(err) -> {
@@ -1416,6 +1429,7 @@ fn meta_item(label: String, val: String) -> Element(Msg) {
 
 fn view_tabs_navigation(model: Model) -> Element(Msg) {
   html.div([class("tabs-nav")], [
+    tab_button("tracker", "Live Tracker 🎛️", model.active_tab),
     tab_button("info", "Instruments & Samples", model.active_tab),
     tab_button("skode", "Generated Skode (main.sk)", model.active_tab),
     tab_button("samples", "WAV Sample Blobs", model.active_tab),
@@ -1443,11 +1457,12 @@ fn tab_button(
 
 fn view_tab_content(model: Model, mod_file: ModFile) -> Element(Msg) {
   case model.active_tab {
+    "tracker" -> view_tab_tracker(model, mod_file)
     "info" -> view_instruments_table(mod_file.instruments, model.is_playing)
     "skode" -> view_skode_code(model.conversion)
     "samples" -> view_samples_list(model.conversion, mod_file, model.is_playing)
     "embed" -> view_embed_guide(model, mod_file)
-    _ -> view_instruments_table(mod_file.instruments, model.is_playing)
+    _ -> view_tab_tracker(model, mod_file)
   }
 }
 
@@ -1892,6 +1907,333 @@ fn view_footer(model: Model) -> Element(Msg) {
       html.span([class("footer-separator")], [text("·")]),
       html.span([class("version-tag")], [text("v" <> skode.pulp_version)]),
     ]),
+  ])
+}
+
+fn hex2(n: Int) -> String {
+  let s = int.to_base16(n)
+  case string.length(s) {
+    1 -> "0" <> s
+    _ -> s
+  }
+}
+
+fn view_tab_tracker(model: Model, mod_file: ModFile) -> Element(Msg) {
+  let total_rows = case model.conversion {
+    Some(conv) -> conv.total_rows
+    None -> mod_file.song_length * 64
+  }
+  let step_idx = case total_rows > 0 {
+    True -> int.min(model.current_step, total_rows - 1)
+    False -> 0
+  }
+  let seq_idx = step_idx / 64
+  let row_idx = step_idx % 64
+  let pat_idx = case list.drop(mod_file.sequence, seq_idx) {
+    [p, ..] -> p
+    [] -> 0
+  }
+  let pat_rows = case list.drop(mod_file.patterns, pat_idx) {
+    [r, ..] -> r
+    [] -> []
+  }
+  let cur_row_notes = case list.drop(pat_rows, row_idx) {
+    [notes, ..] -> notes
+    [] -> []
+  }
+  let inst_map =
+    dict.from_list(list.map(mod_file.instruments, fn(i) { #(i.id, i) }))
+  let num_channels = mod_file.num_channels
+
+  let channel_cards =
+    converter.make_range(0, num_channels - 1)
+    |> list.map(fn(c) {
+      let note = case list.drop(cur_row_notes, c) {
+        [n, ..] -> n
+        [] -> Note(None, 0, 0, 0, 0)
+      }
+      view_channel_card(c, note, inst_map, model.stereo_mode)
+    })
+
+  html.div([class("tracker-tab-layout")], [
+    // Top Live Channel Activity Strip
+    html.div([class("mod-tracker-strip")], [
+      html.div([class("mod-tracker-header")], [
+        html.div([class("mod-tracker-title")], [
+          html.span([], [text("🎛️")]),
+          html.span([], [text("LIVE PROTRACKER CHANNEL ACTIVITY")]),
+        ]),
+        html.div([class("mod-step-badges mono")], [
+          html.span([class("mod-step-badge")], [
+            text(
+              "Step #"
+              <> int.to_string(step_idx + 1)
+              <> " / "
+              <> int.to_string(total_rows),
+            ),
+          ]),
+          html.span([class("mod-pos-badge")], [
+            text(
+              "Pos #"
+              <> int.to_string(seq_idx + 1)
+              <> " / "
+              <> int.to_string(mod_file.song_length)
+              <> " · Pat #"
+              <> int.to_string(pat_idx)
+              <> " · Row #"
+              <> converter.pad_2(row_idx)
+              <> " / 64",
+            ),
+          ]),
+        ]),
+      ]),
+      html.div([class("mod-channels-row")], channel_cards),
+    ]),
+
+    // Pattern Matrix Window
+    view_pattern_window(pat_idx, pat_rows, row_idx, seq_idx, num_channels),
+  ])
+}
+
+fn view_channel_card(
+  ch_idx: Int,
+  note: Note,
+  inst_map: dict.Dict(Int, Instrument),
+  mode: StereoMode,
+) -> Element(Msg) {
+  let pan_tag = case converter.get_channel_pan(ch_idx, mode) {
+    "-0.8" -> "L80"
+    "0.8" -> "R80"
+    "-0.4" -> "L40"
+    "0.4" -> "R40"
+    "0" -> "MID"
+    other -> other
+  }
+  let has_note = case note.midi {
+    Some(_) -> True
+    None -> False
+  }
+  let note_text = case note.midi {
+    Some(m) -> converter.midi_to_note_name(m)
+    None -> "---"
+  }
+  let inst_text = case note.inst > 0 {
+    True -> {
+      let id_str = "#" <> converter.pad_2(note.inst)
+      case dict.get(inst_map, note.inst) {
+        Ok(ins) -> {
+          let clean = string.trim(ins.name)
+          case clean == "" {
+            True -> id_str
+            False -> id_str <> " " <> clean
+          }
+        }
+        Error(_) -> id_str
+      }
+    }
+    False -> "--"
+  }
+  let has_fx = note.effect > 0 || note.param > 0
+  let eff_text = case has_fx {
+    True -> {
+      let desc = converter.effect_description(note.effect, note.param)
+      case desc == "" {
+        True -> int.to_base16(note.effect) <> hex2(note.param)
+        False ->
+          int.to_base16(note.effect) <> hex2(note.param) <> " " <> desc
+      }
+    }
+    False -> "..."
+  }
+  let is_active_hit = has_note || note.inst > 0
+
+  html.div(
+    [
+      class(case is_active_hit {
+        True -> "mod-ch-card mod-ch-hit"
+        False -> "mod-ch-card"
+      }),
+    ],
+    [
+      // Top row: Channel + Pan on left, Note on right
+      html.div([class("mod-ch-top-row mono")], [
+        html.div([class("mod-ch-id-group")], [
+          html.span([class("mod-ch-num")], [
+            text("CH" <> int.to_string(ch_idx + 1)),
+          ]),
+          html.span([class("mod-ch-pan-tag")], [text(pan_tag)]),
+        ]),
+        html.span(
+          [
+            class(case has_note {
+              True -> "mod-ch-note mod-ch-note-active"
+              False -> "mod-ch-note mod-ch-note-dim"
+            }),
+          ],
+          [text(note_text)],
+        ),
+      ]),
+
+      // Bottom row: Sample on left, Effect on right
+      html.div([class("mod-ch-bottom-row mono")], [
+        html.span(
+          [
+            class(case note.inst > 0 {
+              True -> "mod-ch-inst mod-ch-inst-active"
+              False -> "mod-ch-inst mod-ch-inst-dim"
+            }),
+            attribute.title(inst_text),
+          ],
+          [text(inst_text)],
+        ),
+        html.span(
+          [
+            class(case has_fx {
+              True -> "mod-ch-fx mod-ch-fx-active"
+              False -> "mod-ch-fx mod-ch-fx-dim"
+            }),
+            attribute.title(eff_text),
+          ],
+          [text(eff_text)],
+        ),
+      ]),
+    ],
+  )
+}
+
+fn view_pattern_window(
+  pat_idx: Int,
+  pat_rows: List(List(Note)),
+  cur_row: Int,
+  seq_idx: Int,
+  num_channels: Int,
+) -> Element(Msg) {
+  let win_start = int.max(0, cur_row - 6)
+  let win_end = int.min(63, cur_row + 8)
+  let row_indices = converter.make_range(win_start, win_end)
+
+  let table_headers =
+    list.append(
+      [html.th([class("row-num")], [text("ROW")])],
+      converter.make_range(0, num_channels - 1)
+        |> list.map(fn(c) {
+          html.th([], [
+            text(
+              "CH "
+              <> int.to_string(c + 1)
+              <> " (v"
+              <> int.to_string(c)
+              <> ")",
+            ),
+          ])
+        }),
+    )
+
+  let table_rows =
+    list.map(row_indices, fn(r) {
+      let is_current = r == cur_row
+      let r_notes = case list.drop(pat_rows, r) {
+        [rn, ..] -> rn
+        [] -> []
+      }
+      let row_cells =
+        converter.make_range(0, num_channels - 1)
+        |> list.map(fn(c) {
+          let note = case list.drop(r_notes, c) {
+            [n, ..] -> n
+            [] -> Note(None, 0, 0, 0, 0)
+          }
+          html.td([], [format_channel_cell(note)])
+        })
+
+      let row_label = case is_current {
+        True -> "▶ " <> converter.pad_2(r)
+        False -> "  " <> converter.pad_2(r)
+      }
+
+      html.tr(
+        [
+          class(case is_current {
+            True -> "tracker-row current-row"
+            False -> "tracker-row"
+          }),
+          event.on_click(SeekStep(seq_idx * 64 + r)),
+        ],
+        list.append(
+          [html.td([class("row-num mono")], [text(row_label)])],
+          row_cells,
+        ),
+      )
+    })
+
+  html.div([class("mod-pattern-window")], [
+    html.div([class("pattern-window-header mono")], [
+      html.span([], [
+        text(
+          "Pattern #"
+          <> int.to_string(pat_idx)
+          <> " Matrix (Rows "
+          <> converter.pad_2(win_start)
+          <> "–"
+          <> converter.pad_2(win_end)
+          <> " of 64)",
+        ),
+      ]),
+      html.span([class("highlight-cyan")], [
+        text("Click any row to seek playhead"),
+      ]),
+    ]),
+    html.div([class("pattern-table-container")], [
+      html.table([class("pattern-matrix-table mono")], [
+        html.thead([], [html.tr([], table_headers)]),
+        html.tbody([], table_rows),
+      ]),
+    ]),
+  ])
+}
+
+fn format_channel_cell(note: Note) -> Element(Msg) {
+  let #(note_str, is_note) = case note.midi {
+    Some(m) -> #(converter.midi_to_note_name(m), True)
+    None -> #("---", False)
+  }
+  let #(inst_str, is_inst) = case note.inst > 0 {
+    True -> #(hex2(note.inst), True)
+    False -> #("..", False)
+  }
+  let #(fx_str, is_fx) = case note.effect == 0 && note.param == 0 {
+    True -> #("...", False)
+    False -> #(int.to_base16(note.effect) <> hex2(note.param), True)
+  }
+
+  html.div([class("ch-cell-content")], [
+    html.span(
+      [
+        class(case is_note {
+          True -> "cell-note"
+          False -> "cell-note cell-note-empty"
+        }),
+      ],
+      [text(note_str)],
+    ),
+    html.span(
+      [
+        class(case is_inst {
+          True -> "cell-inst"
+          False -> "cell-inst cell-inst-empty"
+        }),
+      ],
+      [text(inst_str)],
+    ),
+    html.span(
+      [
+        class(case is_fx {
+          True -> "cell-fx"
+          False -> "cell-fx cell-fx-empty"
+        }),
+      ],
+      [text(fx_str)],
+    ),
   ])
 }
 
