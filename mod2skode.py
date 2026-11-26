@@ -342,7 +342,7 @@ def convert_mod(filename, out_file=None, compress_blank=False, extract=False, de
         for i in range(num_skode_patterns):
             for c in range(nch + 1):
                 pat_id = c * num_skode_patterns + i
-                out.write(f"y{pat_id} %{initial_speed}\n")
+                out.write(f"y{pat_id} %{initial_speed} {skode_steps} yl\n")
 
         out.write("# === THE MASTER CONDUCTOR ===\n")
         out.write("# y127 is an empty pattern set as the 'Master' (yp127).\n")
