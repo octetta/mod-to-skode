@@ -687,14 +687,16 @@ pub fn convert_with_options(
           }
         })
 
-      // Patterns setup: y0..y{nch} %initial_speed
+      // Patterns setup: y0..y{nch} %initial_speed {total_steps} yl
       let pat_speed_defs =
         list.map(make_range(0, nch), fn(c) {
           "y"
           <> int.to_string(c)
           <> " %"
           <> int.to_string(initial_speed)
-          <> "\n"
+          <> " "
+          <> int.to_string(total_steps)
+          <> " yl\n"
         })
 
       let s_last = total_steps - 1
@@ -882,11 +884,11 @@ pub fn convert_with_options(
         "# will wait perfectly in sync until y127 reaches step 0 (the downbeat).\n",
         "y127 %"
           <> int.to_string(initial_speed)
-          <> "\n"
+          <> " "
+          <> int.to_string(total_steps)
+          <> " yl\n"
           <> y127_steps
-          <> "[v0] x"
-          <> int.to_string(s_last)
-          <> " yp127\n\n",
+          <> "yp127\n\n",
       ]
 
       let all_skode_parts =

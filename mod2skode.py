@@ -1,4 +1,5 @@
 #!/bin/python
+# DEPRECATED: mod2skode.py is deprecated in favor of the Gleam converter (bin/mod2skode or 'make cli').
 import math
 import sys
 import struct
@@ -6,6 +7,8 @@ import zipfile
 import io
 import wave
 import os
+
+sys.stderr.write("DEPRECATION WARNING: mod2skode.py is deprecated. Use the Gleam converter (bin/mod2skode or 'make cli') instead.\n")
 
 
 def vol_to_db(v):
